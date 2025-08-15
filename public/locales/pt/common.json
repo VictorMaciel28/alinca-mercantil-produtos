@@ -1,0 +1,9 @@
+{
+  "basic_example": "Exemplo Básico",
+  "basic_example_description": "Para um estilo básico—com espaçamento leve e apenas divisores horizontais—adicione a classe base <code>.table</code> a qualquer <code>&lt;table&gt;</code>.",
+  "first": "Primeiro",
+  "last": "Último",
+  "handle": "Usuário",
+  "edit": "Editar",
+  "table_with_avatars_description": "Uma lista de todos os usuários da sua conta incluindo nome, cargo, email e papel."
+}

@@ -1,0 +1,147 @@
+//
+// dropdown.scss
+//
+
+.categoria-base.dropdown-toggle,
+.categoria-base.dropdown-item {
+  background-color: white;
+  color: black;
+  padding: 0.5rem 1rem;
+}
+
+.categoria-base.dropdown-toggle::after {
+  /* ajusta o caret se quiser escondê-lo ou padronizá-lo */
+  margin-left: .5rem;
+}
+
+.categoria-base.dropdown-toggle:hover,
+.categoria-base.dropdown-item:hover {
+  background-color: #f8f9fa;
+  color: black;
+}
+
+.dropdown-toggle::after {
+    font-family: initial !important;
+    content: "" !important;
+    border-top: .3em solid currentColor;
+    border-right: .3em solid transparent;
+    border-left: .3em solid transparent;
+    display: inline-block;
+    margin-left: .255em;
+    vertical-align: .255em;
+    color:white;
+  }
+
+.btn-sm {
+    &.dropdown-toggle::after {
+        top: 1px;
+    }
+}
+
+
+.arrow-none::after {
+    display: none;
+}
+
+.dropup {
+    .dropdown-toggle::after {
+        content: "\ea57";
+    }
+}
+
+.dropend {
+    .dropdown-toggle::after {
+        content: "\ea50";
+    }
+}
+
+.dropstart {
+    .dropdown-toggle::before {
+        content: "\ea4d";
+        font-family: boxicons;
+        position: relative;
+        top: 2px;
+        margin-right: 0.255em;
+    }
+
+    .dropdown-toggle::after {
+        display: none;
+    }
+}
+
+
+
+.dropdown-toggle-split {
+
+    &::after,
+    .dropup &::after,
+    .dropend &::after {
+        margin-left: 0;
+    }
+
+    .dropstart &::before {
+        margin-right: 0;
+    }
+}
+
+
+.dropdown-menu {
+    box-shadow: var(--#{$prefix}box-shadow-sm);
+    animation-name: DropDownSlide;
+    animation-duration: 0.3s;
+    animation-fill-mode: both;
+    font-size: $font-size-base;
+    top: 100%;
+
+    &.show {
+        top: 100% !important;
+        margin-top: 2px !important;
+    }
+
+    i {
+        display: inline-block;
+    }
+}
+
+.dropdown-menu-end {
+    right: 0 !important;
+    left: auto !important;
+}
+
+.dropdown-menu[data-popper-placement^="right"],
+.dropdown-menu[data-popper-placement^="top"],
+.dropdown-menu[data-popper-placement^="left"] {
+    top: auto !important;
+    animation: none !important;
+}
+
+@keyframes DropDownSlide {
+    100% {
+        -webkit-transform: translateY(0);
+        transform: translateY(0);
+    }
+
+    0% {
+        -webkit-transform: translateY(-3px);
+        transform: translateY(-3px);
+    }
+}
+
+// Dropdown Large (Custom)
+
+@media (min-width: 600px) {
+    .dropdown-lg {
+        width: 320px;
+    }
+}
+
+// Dropdown size
+@include media-breakpoint-up(lg) {
+    .dropdown-mega-menu-xl {
+        width: 40rem;
+    }
+
+    .dropdown-mega-menu-lg {
+        width: 26rem;
+    }
+}

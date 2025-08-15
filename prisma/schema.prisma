@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model access_level {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(1024)
+}
+
+model api_tokens {
+  id            Int      @id @default(autoincrement())
+  access_token  String   @db.Text
+  refresh_token String   @db.Text
+  expires_in    Int
+  created_at    DateTime @default(now()) @db.Timestamp(0)
+}
+
+model chapter_college {
+  id                       Int       @id @default(autoincrement())
+  id_ebook                 Int
+  code                     String    @db.VarChar(10)
+  title                    String    @db.VarChar(512)
+  id_user                  Int
+  id_orientator            Int?
+  abstract                 String    @db.Text
+  authors                  String    @db.Text
+  status                   Int
+  disapproved_text         String?   @db.VarChar(255)
+  disapproved_text_edition String?   @db.VarChar(1024)
+  approved_by_orientator   Int?
+  date_sent                DateTime? @db.Date
+  filesName                String?   @db.VarChar(255)
+  social_midia             String?   @db.VarChar(1024)
+}
+
+model chat {
+  id        Int      @id @default(autoincrement())
+  code      String   @db.VarChar(10)
+  sender    String   @db.VarChar(255)
+  message   String   @db.VarChar(2048)
+  seen      Boolean
+  date_sent DateTime @default(now()) @db.Timestamp(0)
+}
+
+model college {
+  id        Int    @id @default(autoincrement())
+  code      String @db.VarChar(10)
+  name      String @db.VarChar(500)
+  filesName String @db.VarChar(255)
+}
+
+model college_user {
+  id_user      Int
+  id_college   Int
+  access_level Int
+
+  @@id([id_user, id_college, access_level])
+}
+
+model coupon {
+  id                Int                 @id @default(autoincrement())
+  codigo            String              @db.VarChar(100)
+  link              String?             @db.VarChar(255)
+  percentual        Decimal             @db.Decimal(5, 2)
+  id_ebook          Int?
+  validade          DateTime?           @db.Date
+  ativo             Int?                @default(1)
+  user_ebook_coupon user_ebook_coupon[]
+}
+
+model course {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(256)
+  description String   @db.VarChar(512)
+  date_limit  DateTime @db.Date
+  code        Int
+  filesName   String   @db.VarChar(512)
+  link        String   @db.VarChar(255)
+}
+
+model course_payment {
+  id          Int      @id @default(autoincrement())
+  code        String   @db.VarChar(14)
+  base        Bytes
+  insert_date DateTime @db.DateTime(0)
+}
+
+model course_user {
+  id          Int      @id @default(autoincrement())
+  code        String   @db.VarChar(14)
+  id_user     Int
+  id_course   Int
+  insert_date DateTime @db.DateTime(0)
+  status      Int
+}
+
+model ebook {
+  id                 Int       @id @default(autoincrement())
+  code               String    @db.VarChar(10)
+  photo              Bytes
+  edital             Bytes
+  type               String    @db.VarChar(255)
+  id_editor          Int
+  linkpay            String    @db.VarChar(255)
+  name               String    @db.VarChar(128)
+  price              String    @db.VarChar(11)
+  description        String    @db.VarChar(1024)
+  filesName          String?   @db.VarChar(255)
+  date_emission      DateTime? @db.Date
+  ativo              Boolean   @default(true)
+  isPSU              Int?
+  publication_status Int?      @default(0)
+}
+
+model ebook_college {
+  id             Int       @id @default(autoincrement())
+  code           String    @db.VarChar(10)
+  id_coordinator Int
+  id_college     Int
+  id_editor      Int
+  linkpay        String    @db.VarChar(255)
+  name           String    @db.VarChar(128)
+  price          String    @db.VarChar(11)
+  description    String    @db.VarChar(1024)
+  date_close     DateTime  @db.Date
+  date_ends      DateTime  @db.Date
+  date_emission  DateTime? @db.Date
+  filesName      String    @db.VarChar(1024)
+  ativo          Boolean   @default(true)
+}
+
+model ebook_docs {
+  code_ebook       String    @id @db.VarChar(10)
+  content          Bytes
+  disapproved_text String?   @db.Text
+  date_submited    DateTime? @db.Date
+  length           String    @db.VarChar(25)
+}
+
+model historic_disapproved {
+  id   Int       @id @default(autoincrement())
+  code String    @db.VarChar(10)
+  text String    @db.VarChar(2048)
+  date DateTime? @db.DateTime(0)
+}
+
+model payment {
+  id            Int      @id @default(autoincrement())
+  code_ebook    String   @db.VarChar(10)
+  proof_payment Bytes?
+  date_payment  DateTime @default(now()) @db.Timestamp(0)
+  denied        Boolean?
+}
+
+model photos {
+  id           Int    @id @default(autoincrement())
+  code_ebook   String @db.VarChar(12)
+  image_name   String @db.VarChar(25)
+  image_length String @db.VarChar(25)
+  type         String @db.VarChar(25)
+  image        Bytes?
+}
+
+model publications {
+  id            Int       @id @default(autoincrement())
+  name          String    @db.VarChar(1024)
+  participants  String?   @db.VarChar(2048)
+  isbn          String    @db.VarChar(17)
+  code_ebook    String?   @db.VarChar(14)
+  photo         Bytes?
+  pdf           Bytes?
+  filesName     String?   @db.VarChar(255)
+  key_words     String    @db.VarChar(1024)
+  doi           String    @db.VarChar(30)
+  year          Int
+  presentation  String    @db.VarChar(2048)
+  date_emission DateTime? @db.Date
+  ativo         Boolean   @default(true)
+  editor_pix    String    @db.VarChar(150)
+  editor_value  String    @db.VarChar(10)
+}
+
+model publications_chapter {
+  id             Int     @id @default(autoincrement())
+  name           String  @db.VarChar(1024)
+  authors        String? @db.VarChar(2048)
+  pdf            Bytes
+  key_words      String? @db.VarChar(1024)
+  doi            String? @db.VarChar(75)
+  presentation   String? @db.VarChar(2048)
+  id_publication Int
+  chapter        Int?
+  ativo          Int?
+  filesName      String? @db.VarChar(512)
+
+  @@index([id_publication], map: "FK_publications")
+}
+
+model refs {
+  id         Int    @id @default(autoincrement())
+  code_ebook String @db.VarChar(12)
+  content    String @db.VarChar(255)
+}
+
+model request {
+  id             String   @id @db.VarChar(50)
+  id_depositor   Int
+  id_publication Int?
+  title          String   @db.VarChar(255)
+  company        String   @db.VarChar(200)
+  edition        Int
+  isbn           String?  @db.VarChar(70)
+  link           String   @db.VarChar(70)
+  abstract       String   @db.TinyText
+  created_at     DateTime @db.DateTime(0)
+  status         Int
+}
+
+model request_chapter {
+  id         String   @id @db.VarChar(50)
+  id_request String   @db.VarChar(50)
+  title      String   @db.VarChar(255)
+  link       String   @db.VarChar(255)
+  abstract   String   @db.VarChar(2048)
+  first_page Int
+  last_page  Int
+  created_at DateTime @db.DateTime(0)
+}
+
+model request_chapter_author {
+  id         Int     @id @default(autoincrement())
+  id_chapter String  @db.VarChar(50)
+  name       String  @db.VarChar(255)
+  email      String? @db.VarChar(150)
+  instagram  String? @db.VarChar(150)
+}
+
+model request_contribuitor {
+  id         Int    @id @default(autoincrement())
+  id_request String @db.VarChar(50)
+  name       String @db.VarChar(255)
+
+  @@index([id_request], map: "fk_request_contribuitor_id_request")
+}
+
+model request_status {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(50)
+}
+
+model status_list {
+  code Int    @id @default(autoincrement())
+  name String @db.VarChar(100)
+}
+
+model status_list_college {
+  code Int    @id @default(autoincrement())
+  name String @db.VarChar(100)
+}
+
+model status_list_course {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(75)
+}
+
+model user_ebook {
+  id                    Int                 @id @default(autoincrement())
+  id_ebook              Int
+  code                  String              @db.VarChar(10)
+  type                  String              @db.VarChar(255)
+  id_user               Int
+  id_editor             Int
+  name                  String              @db.Text
+  price                 String              @db.VarChar(11)
+  description           String              @db.VarChar(255)
+  title                 String              @db.VarChar(512)
+  linkpay               String?             @db.VarChar(255)
+  content               Bytes               @db.Blob
+  author                String              @db.Text
+  author_affiliations   String              @db.Text
+  introduction          String              @db.Text
+  description_case      String              @db.Text
+  outcome               String              @db.Text
+  method                String              @db.Text
+  result_and_discussion String              @db.Text
+  conclusion            String              @db.Text
+  book_references       String              @db.Text
+  city                  String              @db.VarChar(255)
+  book_date             String              @db.VarChar(75)
+  status                Int
+  disapproved_text      String?             @db.VarChar(255)
+  editor_doc            Bytes?
+  editor_doc_size       String?             @db.VarChar(25)
+  user_ebook_coupon     user_ebook_coupon[]
+}
+
+model user_ebook_address {
+  id       Int    @id @default(autoincrement())
+  code     String @db.VarChar(14)
+  id_user  Int
+  zipcode  String @db.VarChar(10)
+  address  String @db.VarChar(255)
+  number   String @db.VarChar(5)
+  district String @db.VarChar(255)
+  city     String @db.VarChar(255)
+  state    String @db.VarChar(255)
+  document String @db.VarChar(50)
+}
+
+model user_ebook_author {
+  id        Int     @id @default(autoincrement())
+  name      String? @db.VarChar(155)
+  email     String? @db.VarChar(155)
+  instagram String? @db.VarChar(155)
+  id_ebook  Int
+}
+
+model user_ebook_coupon {
+  id            Int        @id @default(autoincrement())
+  id_coupon     Int
+  id_user_ebook Int
+  created_at    DateTime?  @default(now()) @db.DateTime(0)
+  coupon        coupon     @relation(fields: [id_coupon], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "user_ebook_coupon_ibfk_1")
+  user_ebook    user_ebook @relation(fields: [id_user_ebook], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "user_ebook_coupon_ibfk_2")
+
+  @@unique([id_coupon, id_user_ebook], map: "unique_coupon_user")
+  @@index([id_user_ebook], map: "id_user_ebook")
+}
+
+model wp_users {
+  ID                  BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  user_login          String   @default("") @db.VarChar(60)
+  user_pass           String   @default("") @db.VarChar(255)
+  user_nicename       String   @default("") @db.VarChar(50)
+  user_email          String   @default("") @db.VarChar(100)
+  user_url            String   @default("") @db.VarChar(100)
+  user_registered     DateTime @default(dbgenerated("('0000-00-00 00:00:00')")) @db.DateTime(0)
+  user_activation_key String   @default("") @db.VarChar(255)
+  user_status         Int      @default(0)
+  display_name        String   @default("") @db.VarChar(250)
+  access_level        Int      @default(1)
+
+  @@index([user_email], map: "user_email")
+  @@index([user_login], map: "user_login_key")
+  @@index([user_nicename], map: "user_nicename")
+}
+
+model Magazine {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String
+  publishDate DateTime
+  status      String
+  coverImage  String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  Submission  Submission[]
+}
+
+model Submission {
+  id                    Int      @id @default(autoincrement())
+  articleType           String
+  title                 String
+  abstract              String
+  keywords              String
+  wordFile              String
+  committeeLetterFile   String
+  graphicalAbstractFile String
+  magazineId            Int      @default(1)
+  userId                Int      @default(1)
+  createdAt             DateTime @default(now())
+  Magazine              Magazine @relation(fields: [magazineId], references: [id])
+
+  @@index([magazineId], map: "Submission_magazineId_fkey")
+}

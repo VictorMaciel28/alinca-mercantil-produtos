@@ -1,0 +1,9 @@
+{
+  "basic_example": "Basic Example",
+  "basic_example_description": "For basic styling—light padding and only horizontal dividers—add the base class <code>.table</code> to any <code>&lt;table&gt;</code>.",
+  "first": "First",
+  "last": "Last",
+  "handle": "Handle",
+  "edit": "Edit",
+  "table_with_avatars_description": "A list of all the users in your account including their name, title, email and role."
+}
