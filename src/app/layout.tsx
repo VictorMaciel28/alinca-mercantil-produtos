@@ -16,7 +16,7 @@ const figtree = Figtree({
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | Editora Pasteur',
+    template: '%s | Alianca Mercantil',
     default: DEFAULT_PAGE_TITLE,
   },
   description: 'A fully responsive premium admin dashboard template, Real Estate Management Admin Template',
