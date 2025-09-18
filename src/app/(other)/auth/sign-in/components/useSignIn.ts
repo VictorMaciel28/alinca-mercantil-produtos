@@ -39,9 +39,9 @@ const useSignIn = () => {
       password: values?.password,
     }).then((res) => {
       if (res?.ok) {
-        // Redireciona para a página de editais abertos após login bem-sucedido
-        push(queryParams['redirectTo'] ?? '/magazine/submission-page')
-        
+        // Redireciona para a página de pedidos após login bem-sucedido
+        push(queryParams['redirectTo'] ?? '/pedidos')
+
         showNotification({ message: 'Successfully logged in. Redirecting....', variant: 'success' })
       } else {
         showNotification({ message: res?.error ?? '', variant: 'danger' })

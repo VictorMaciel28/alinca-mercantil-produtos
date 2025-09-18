@@ -37,6 +37,13 @@ export default function ProdutosPage() {
       {/* Header da página */}
       <section className="page-header py-5 bg-dark">
         <Container>
+          <Row className="justify-content-end mb-3">
+            <Col className="d-flex justify-content-end">
+              <a href="/auth/sign-in" className="btn btn-outline-light btn-sm white text-white">
+                Entrar
+              </a>
+            </Col>
+          </Row>
           <Row className="justify-content-center text-center">
             <Col lg={8}>
               <h1 className="text-white display-4 mb-3 text-warning" style={{ fontSize: "3rem" }}>Aliança Mercantil Atacadista</h1>
@@ -59,7 +66,7 @@ export default function ProdutosPage() {
       </section>
 
       {/* Menu de Categorias */}
-      <CategoriasMenu onCategoriaSelect={handleCategoriaSelect} />
+      {/* <CategoriasMenu onCategoriaSelect={handleCategoriaSelect} /> */}
 
       {/* Lista de produtos */}
       <section className="produtos-lista py-5">
@@ -187,3 +194,5 @@ export default function ProdutosPage() {
     </div>
   );
 }
+
+

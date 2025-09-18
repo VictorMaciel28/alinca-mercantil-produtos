@@ -1,11 +1,8 @@
-import IconifyIcon from '@/components/wrappers/IconifyIcon'
 import LeftSideBarToggle from './components/LeftSideBarToggle'
 import ProfileDropdown from './components/ProfileDropdown'
 import ThemeCustomizerToggle from './components/ThemeCustomizerToggle'
-import Notifications from './components/Notifications'
 import ThemeModeToggle from './components/ThemeModeToggle'
 import MaximizeScreen from './components/MaximizeScreen'
-import LanguageSelector from './components/LanguageSelector'
 import { Container } from 'react-bootstrap'
 
 const page = () => {
@@ -26,11 +23,11 @@ const page = () => {
             <div className="d-flex align-items-center gap-1">
               <ThemeModeToggle />
 
-              <LanguageSelector />
+              {/* <LanguageSelector /> */}
 
               <MaximizeScreen />
 
-              <Notifications />
+              {/* <Notifications /> */}
 
               <ThemeCustomizerToggle />
 

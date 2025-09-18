@@ -1,4 +1,4 @@
-import avatar1 from '@/assets/images/users/avatar-1.jpg'
+import avatarNeutral from '@/assets/images/users/avatar-neutral.png'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -16,7 +16,7 @@ const ProfileDropdown = () => {
         aria-haspopup="true"
         aria-expanded="false">
         <span className="d-flex align-items-center">
-          <Image className="rounded-circle" width={32} src={avatar1} alt="avatar-3" />
+          <Image className="rounded-circle" width={32} src={avatarNeutral} alt="avatar" />
         </span>
       </DropdownToggle>
       <DropdownMenu className="dropdown-menu-end">
