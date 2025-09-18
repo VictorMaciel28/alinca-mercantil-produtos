@@ -251,14 +251,14 @@ export default function PedidoFormPage() {
                               onChange={(e) => onNomeChange(item.id, e.target.value)}
                               className="flex-grow-1"
                             />
-                            <Button
+                            {/* <Button
                               variant="outline-secondary"
                               size="sm"
                               onClick={() => setShowSearch(true)}
                               title="Buscar produto"
                             >
                               <IconifyIcon icon="ri:search-line" />
-                            </Button>
+                            </Button> */}
                           </div>
                           {showSuggestForItem[item.id] && (suggestionsByItem[item.id]?.length ?? 0) > 0 && (
                             <div className="border rounded bg-white shadow position-absolute w-100 mt-1" style={{ zIndex: 2000, maxHeight: 300, overflowY: 'auto' }}>
