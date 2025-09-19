@@ -91,6 +91,14 @@ const LayoutProvider = ({ children }: ChildrenType) => {
     setOffcanvasStates({ ...offcanvasStates, showBackdrop: !offcanvasStates.showBackdrop })
   }, [offcanvasStates.showBackdrop])
 
+  // ensure backdrop is closed (no-op if already closed)
+  const closeBackdrop = useCallback(() => {
+    if (!offcanvasStates.showBackdrop) return
+    const htmlTag = document.getElementsByTagName('html')[0]
+    htmlTag.classList.remove('sidebar-enable')
+    setOffcanvasStates({ ...offcanvasStates, showBackdrop: false })
+  }, [offcanvasStates.showBackdrop])
+
 
   useEffect(() => {
     toggleDocumentAttribute('data-bs-theme', settings.theme)
@@ -122,6 +130,7 @@ const LayoutProvider = ({ children }: ChildrenType) => {
           themeCustomizer,
           activityStream,
           toggleBackdrop,
+          closeBackdrop,
           resetSettings,
         }),
         [settings, offcanvasStates],

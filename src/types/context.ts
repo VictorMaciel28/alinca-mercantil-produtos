@@ -37,6 +37,7 @@ export type LayoutType = LayoutState & {
   themeCustomizer: OffcanvasControlType
   activityStream: OffcanvasControlType
   toggleBackdrop: () => void
+  closeBackdrop: () => void
   resetSettings: () => void
 }
 
