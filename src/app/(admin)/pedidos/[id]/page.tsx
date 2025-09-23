@@ -40,6 +40,30 @@ export default function PedidoFormPage() {
   const [showSuggestForItem, setShowSuggestForItem] = useState<Record<number, boolean>>({})
   const debounceTimers = useRef<Record<number, any>>({})
 
+  // Sugestões de clientes
+  type ClientSuggestion = { id: number; nome: string; cpf_cnpj?: string }
+  const [clientSuggestions, setClientSuggestions] = useState<ClientSuggestion[]>([])
+  const [showClientSuggest, setShowClientSuggest] = useState<boolean>(false)
+  const clientDebounceRef = useRef<any>(null)
+
+  // Submissão Tiny
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const formatDateBR = (isoOrDate: string | Date) => {
+    const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    return `${dd}/${mm}/${yyyy}`
+  }
+
+  const toTinyDecimal = (num: number) => {
+    return Number(num ?? 0).toFixed(2).replace(/,/g, '.')
+  }
+
+  const onlyDigits = (s: string) => (s || '').replace(/\D/g, '')
+
   const addItem = () => {
     setItens((arr) => {
       const nextId = arr.reduce((m, it) => Math.max(m, it.id), 0) + 1
@@ -66,10 +90,103 @@ export default function PedidoFormPage() {
     setForm((f) => ({ ...f, [key]: value }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const onClienteChange = (value: string) => {
+    setForm((f) => ({ ...f, cliente: value }))
+    if (clientDebounceRef.current) clearTimeout(clientDebounceRef.current)
+    const trimmed = value.trim()
+    if (trimmed.length >= 3) {
+      clientDebounceRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/contatos?q=${encodeURIComponent(trimmed)}`)
+          const data = await res.json()
+          const options: ClientSuggestion[] = (data?.retorno?.contatos || []).map((c: any) => ({
+            id: Number(c?.contato?.id ?? 0),
+            nome: c?.contato?.nome || c?.contato?.nome_fantasia || c?.contato?.razao_social || '',
+            cpf_cnpj: c?.contato?.cpf_cnpj || c?.contato?.cnpj || c?.contato?.cpf || '',
+          })).filter((c: ClientSuggestion) => !!c.nome)
+          setClientSuggestions(options)
+          setShowClientSuggest(options.length > 0)
+        } catch (e) {
+          setClientSuggestions([])
+          setShowClientSuggest(false)
+        }
+      }, 1000)
+    } else {
+      setShowClientSuggest(false)
+      setClientSuggestions([])
+    }
+  }
+
+  const selectCliente = (opt: ClientSuggestion) => {
+    setForm((f) => ({ ...f, cliente: opt.nome, cnpj: opt.cpf_cnpj || '' }))
+    setShowClientSuggest(false)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const saved = savePedido(form)
-    router.push(`/pedidos/${saved.numero}`)
+    setSubmitError(null)
+    setIsSubmitting(true)
+
+    try {
+      // Monta payload Tiny
+      const cpfCnpjDigits = onlyDigits(form.cnpj)
+      const tipoPessoa = cpfCnpjDigits.length === 11 ? 'F' : (cpfCnpjDigits.length === 14 ? 'J' : '')
+
+      const tinyItens = itens
+        .filter((it) => (it.nome || '').trim() && it.quantidade > 0)
+        .map((it) => ({
+          item: {
+            ...(it.produtoId ? { id_produto: it.produtoId } : {}),
+            ...(it.sku ? { codigo: it.sku } : {}),
+            descricao: it.nome,
+            unidade: it.unidade,
+            quantidade: toTinyDecimal(it.quantidade),
+            valor_unitario: toTinyDecimal(it.preco || 0),
+          },
+        }))
+
+      const descontoValor = Math.max(0, (itens.reduce((acc, it) => acc + (it.quantidade * (it.preco || 0)), 0)) - (totalComDesconto || 0))
+
+      const tinyParcelas = parcelas.length > 0
+        ? parcelas.map((p) => ({ parcela: { data: formatDateBR(p.data), valor: toTinyDecimal(p.valor) } }))
+        : undefined
+
+      const tinyPedido: any = {
+        data_pedido: form.data ? formatDateBR(form.data) : formatDateBR(new Date()),
+        cliente: {
+          nome: form.cliente,
+          ...(cpfCnpjDigits ? { cpf_cnpj: cpfCnpjDigits } : {}),
+          ...(tipoPessoa ? { tipo_pessoa: tipoPessoa } : {}),
+          atualizar_cliente: 'S',
+        },
+        itens: tinyItens,
+        ...(descontoValor > 0 ? { valor_desconto: toTinyDecimal(descontoValor) } : {}),
+        ...(tinyParcelas ? { parcelas: tinyParcelas } : {}),
+        ...(formaRecebimento ? { meio_pagamento: formaRecebimento } : {}),
+        nome_vendedor: 'Daniel Meirelles',
+      }
+
+      const res = await fetch('/api/pedidos/incluir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedido: tinyPedido }),
+      })
+      const data = await res.json()
+
+      if (!res.ok || (data?.retorno?.status && data.retorno.status !== 'OK')) {
+        const msg = data?.retorno?.erros?.map((e: any) => e?.erro)?.join('; ') || data?.erro || 'Falha ao incluir pedido'
+        setSubmitError(msg)
+      } else {
+        // Sucesso também no Tiny: mantém fluxo local
+        const saved = savePedido(form)
+        router.push(`/pedidos/${saved.numero}`)
+        return
+      }
+    } catch (err: any) {
+      setSubmitError('Erro inesperado ao enviar o pedido')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const subtotal = useMemo(() => {
@@ -181,21 +298,38 @@ export default function PedidoFormPage() {
           <Row className="g-3 align-items-end">
             <Col lg={6}>
               <Form.Label>Cliente</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Pesquise pelo nome da empresa ou CNPJ"
-                value={form.cliente}
-                onChange={(e) => handleChange('cliente', e.target.value)}
-              />
+              <div className="position-relative">
+                <Form.Control
+                  type="text"
+                  placeholder="Pesquise pelo nome da empresa ou CNPJ"
+                  value={form.cliente}
+                  onChange={(e) => onClienteChange(e.target.value)}
+                />
+                {showClientSuggest && clientSuggestions.length > 0 && (
+                  <div className="border rounded bg-white shadow position-absolute w-100 mt-1" style={{ zIndex: 2000, maxHeight: 300, overflowY: 'auto' }}>
+                    {clientSuggestions.map((opt) => (
+                      <div
+                        key={opt.id}
+                        className="px-2 py-1 hover-bg"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => selectCliente(opt)}
+                      >
+                        <div className="fw-semibold small">{opt.nome}</div>
+                        <div className="text-muted small">{opt.cpf_cnpj || '-'}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Col>
             <Col lg={3}>
               <Form.Label>Vendedor</Form.Label>
-              <Form.Control type="text" value="Vendedor Exemplo" disabled />
+              <Form.Control type="text" value="Daniel Meirelles" disabled />
             </Col>
             <Col lg={3} className="d-flex justify-content-lg-end">
-              <Button variant="outline-primary" onClick={() => router.push('/customers/add')}>
+              {/* <Button variant="outline-primary" onClick={() => router.push('/customers/add')}>
                 Cadastrar Cliente
-              </Button>
+              </Button> */}
             </Col>
           </Row>
         </Card.Body>
@@ -343,14 +477,14 @@ export default function PedidoFormPage() {
                         onChange={(e) => onNomeChange(item.id, e.target.value)}
                         className="flex-grow-1"
                       />
-                      <Button
+                      {/* <Button
                         variant="outline-secondary"
                         size="sm"
                         onClick={() => setShowSearch(true)}
                         title="Buscar produto"
                       >
                         <IconifyIcon icon="ri:search-line" />
-                      </Button>
+                      </Button> */}
                     </div>
                     {showSuggestForItem[item.id] && (suggestionsByItem[item.id]?.length ?? 0) > 0 && (
                       <div className="border rounded bg-white shadow mt-1" style={{ zIndex: 10 }}>
@@ -404,14 +538,14 @@ export default function PedidoFormPage() {
                       <Form.Control type="text" value={totalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disabled />
                     </Col>
                   </Row>
-                  <div className="d-flex justify-content-end gap-2 mt-2">
+                  {/* <div className="d-flex justify-content-end gap-2 mt-2">
                     <Button variant="outline-secondary" size="sm" onClick={() => { setPreviewUrl(item.imagemUrl || null); setShowPreview(true) }} title="Ver imagem">
                       <IconifyIcon icon="ri:image-line" />
                     </Button>
                     <Button variant="outline-danger" size="sm" onClick={() => removeItem(item.id)} title="Remover">
                       <IconifyIcon icon="ri:delete-bin-line" />
                     </Button>
-                  </div>
+                  </div> */}
                 </div>
               )
             })}
@@ -503,7 +637,7 @@ export default function PedidoFormPage() {
             )}
 
             <div className="d-flex gap-2 mt-4">
-              <Button type="submit">Salvar</Button>
+              <Button type="submit">Enviar Pedido</Button>
               <Button variant="secondary" onClick={() => router.push('/pedidos')}>Cancelar</Button>
             </div>
           </Form>
