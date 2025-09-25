@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import PageTitle from '@/components/PageTitle'
-import { Card, Row, Col, Form, Button, Table, Modal } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, Table, Modal, Spinner } from 'react-bootstrap'
 import { getPedidoByNumero, savePedido, Pedido, PedidoStatus, getNextPedidoNumero } from '@/services/pedidos'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
@@ -34,6 +34,23 @@ export default function PedidoFormPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [showSearch, setShowSearch] = useState(false)
+
+  // Histórico de produtos
+  type HistoryItem = {
+    id: number
+    pedido_id: number
+    produto_id: number
+    codigo: string | null
+    nome: string | null
+    preco: string | number | null
+    quantidade: string | number
+    created_at: string
+    tiny_orders?: { cliente_nome?: string | null; numero_pedido?: string | null }
+  }
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([])
 
   type Suggestion = { id: number; nome: string; codigo?: string }
   const [suggestionsByItem, setSuggestionsByItem] = useState<Record<number, Suggestion[]>>({})
@@ -285,6 +302,46 @@ export default function PedidoFormPage() {
     } catch (e) {
       // ignore
     }
+  }
+
+  const openHistory = async () => {
+    if (!form.cliente || !form.cliente.trim()) {
+      setHistoryError('Informe o cliente para ver o histórico')
+      setShowHistory(true)
+      return
+    }
+    setShowHistory(true)
+    setHistoryLoading(true)
+    setHistoryError(null)
+    try {
+      const res = await fetch(`/api/historico-produtos?cliente=${encodeURIComponent(form.cliente)}`)
+      const data = await res.json()
+      if (!res.ok || data?.erro) {
+        setHistoryError(data?.erro || 'Falha ao carregar histórico')
+        setHistoryItems([])
+      } else {
+        setHistoryItems(Array.isArray(data.items) ? data.items : [])
+      }
+    } catch (e) {
+      setHistoryError('Erro ao carregar histórico')
+      setHistoryItems([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const closeHistory = () => {
+    setShowHistory(false)
+  }
+
+  const getRowVariantByDate = (iso: string) => {
+    const now = new Date()
+    const dt = new Date(iso)
+    const ms = now.getTime() - dt.getTime()
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24))
+    if (days <= 30) return 'success'
+    if (days <= 90) return 'warning'
+    return 'danger'
   }
 
   return (
@@ -550,6 +607,17 @@ export default function PedidoFormPage() {
               )
             })}
           </div>
+
+          <div className="d-flex justify-content-start mt-3">
+            <Button
+              variant="link"
+              className="p-0 text-primary"
+              style={{ textDecoration: 'underline' }}
+              onClick={openHistory}
+            >
+              Histórico de produtos
+            </Button>
+          </div>
         </Card.Body>
       </Card>
 
@@ -671,6 +739,56 @@ export default function PedidoFormPage() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowSearch(false)}>Fechar</Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showHistory} onHide={closeHistory} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Histórico de produtos</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {historyLoading ? (
+            <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /><span>Carregando histórico...</span></div>
+          ) : historyError ? (
+            <div className="text-danger small">{historyError}</div>
+          ) : historyItems.length === 0 ? (
+            <div className="text-muted small">Nenhum histórico encontrado para este cliente.</div>
+          ) : (
+            <div className="table-responsive">
+              <Table hover size="sm" className="mb-0">
+                <thead>
+                  <tr>
+                    <th style={{ width: 140 }}>Data da venda</th>
+                    <th style={{ width: 140 }}>Código (SKU)</th>
+                    <th>Nome</th>
+                    <th style={{ width: 120 }}>Preço</th>
+                    <th style={{ width: 100 }}>Qtd</th>
+                    <th style={{ width: 140 }}>Nº Pedido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyItems.map((h) => {
+                    const variant = getRowVariantByDate(h.created_at)
+                    const precoNum = typeof h.preco === 'string' ? Number(h.preco) : (h.preco || 0)
+                    const qtdNum = typeof h.quantidade === 'string' ? Number(h.quantidade) : h.quantidade
+                    return (
+                      <tr key={h.id} className={`table-${variant}`}>
+                        <td>{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
+                        <td>{h.codigo || '-'}</td>
+                        <td>{h.nome || '-'}</td>
+                        <td>{Number(precoNum || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                        <td>{Number(qtdNum || 0)}</td>
+                        <td>{h.tiny_orders?.numero_pedido || '-'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={closeHistory}>Fechar</Button>
         </Modal.Footer>
       </Modal>
     </>

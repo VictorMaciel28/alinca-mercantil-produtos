@@ -13,324 +13,20 @@ model access_level {
   name String @db.VarChar(1024)
 }
 
-model api_tokens {
-  id            Int      @id @default(autoincrement())
-  access_token  String   @db.Text
-  refresh_token String   @db.Text
-  expires_in    Int
-  created_at    DateTime @default(now()) @db.Timestamp(0)
-}
-
-model chapter_college {
-  id                       Int       @id @default(autoincrement())
-  id_ebook                 Int
-  code                     String    @db.VarChar(10)
-  title                    String    @db.VarChar(512)
-  id_user                  Int
-  id_orientator            Int?
-  abstract                 String    @db.Text
-  authors                  String    @db.Text
-  status                   Int
-  disapproved_text         String?   @db.VarChar(255)
-  disapproved_text_edition String?   @db.VarChar(1024)
-  approved_by_orientator   Int?
-  date_sent                DateTime? @db.Date
-  filesName                String?   @db.VarChar(255)
-  social_midia             String?   @db.VarChar(1024)
-}
-
-model chat {
-  id        Int      @id @default(autoincrement())
-  code      String   @db.VarChar(10)
-  sender    String   @db.VarChar(255)
-  message   String   @db.VarChar(2048)
-  seen      Boolean
-  date_sent DateTime @default(now()) @db.Timestamp(0)
-}
-
-model college {
-  id        Int    @id @default(autoincrement())
-  code      String @db.VarChar(10)
-  name      String @db.VarChar(500)
-  filesName String @db.VarChar(255)
-}
-
-model college_user {
-  id_user      Int
-  id_college   Int
-  access_level Int
-
-  @@id([id_user, id_college, access_level])
-}
-
-model coupon {
-  id                Int                 @id @default(autoincrement())
-  codigo            String              @db.VarChar(100)
-  link              String?             @db.VarChar(255)
-  percentual        Decimal             @db.Decimal(5, 2)
-  id_ebook          Int?
-  validade          DateTime?           @db.Date
-  ativo             Int?                @default(1)
-  user_ebook_coupon user_ebook_coupon[]
-}
-
-model course {
-  id          Int      @id @default(autoincrement())
-  name        String   @db.VarChar(256)
-  description String   @db.VarChar(512)
-  date_limit  DateTime @db.Date
-  code        Int
-  filesName   String   @db.VarChar(512)
-  link        String   @db.VarChar(255)
-}
-
-model course_payment {
-  id          Int      @id @default(autoincrement())
-  code        String   @db.VarChar(14)
-  base        Bytes
-  insert_date DateTime @db.DateTime(0)
-}
-
-model course_user {
-  id          Int      @id @default(autoincrement())
-  code        String   @db.VarChar(14)
-  id_user     Int
-  id_course   Int
-  insert_date DateTime @db.DateTime(0)
-  status      Int
-}
-
-model ebook {
-  id                 Int       @id @default(autoincrement())
-  code               String    @db.VarChar(10)
-  photo              Bytes
-  edital             Bytes
-  type               String    @db.VarChar(255)
-  id_editor          Int
-  linkpay            String    @db.VarChar(255)
-  name               String    @db.VarChar(128)
-  price              String    @db.VarChar(11)
-  description        String    @db.VarChar(1024)
-  filesName          String?   @db.VarChar(255)
-  date_emission      DateTime? @db.Date
-  ativo              Boolean   @default(true)
-  isPSU              Int?
-  publication_status Int?      @default(0)
-}
-
-model ebook_college {
-  id             Int       @id @default(autoincrement())
-  code           String    @db.VarChar(10)
-  id_coordinator Int
-  id_college     Int
-  id_editor      Int
-  linkpay        String    @db.VarChar(255)
-  name           String    @db.VarChar(128)
-  price          String    @db.VarChar(11)
-  description    String    @db.VarChar(1024)
-  date_close     DateTime  @db.Date
-  date_ends      DateTime  @db.Date
-  date_emission  DateTime? @db.Date
-  filesName      String    @db.VarChar(1024)
-  ativo          Boolean   @default(true)
-}
-
-model ebook_docs {
-  code_ebook       String    @id @db.VarChar(10)
-  content          Bytes
-  disapproved_text String?   @db.Text
-  date_submited    DateTime? @db.Date
-  length           String    @db.VarChar(25)
-}
-
-model historic_disapproved {
-  id   Int       @id @default(autoincrement())
-  code String    @db.VarChar(10)
-  text String    @db.VarChar(2048)
-  date DateTime? @db.DateTime(0)
-}
-
 model payment {
-  id            Int      @id @default(autoincrement())
-  code_ebook    String   @db.VarChar(10)
-  proof_payment Bytes?
-  date_payment  DateTime @default(now()) @db.Timestamp(0)
-  denied        Boolean?
-}
+  id            Int     @id @default(autoincrement())
+  number        BigInt
+  id_account    Int?
+  file          String? @db.VarChar(255)
+  emiter        String  @db.VarChar(255)
+  destine       String  @db.VarChar(255)
+  email_destine String? @db.VarChar(150)
+  method        Int
+  observation   String  @db.VarChar(2048)
+  income        Int     @db.TinyInt
+  serie         Int?
 
-model photos {
-  id           Int    @id @default(autoincrement())
-  code_ebook   String @db.VarChar(12)
-  image_name   String @db.VarChar(25)
-  image_length String @db.VarChar(25)
-  type         String @db.VarChar(25)
-  image        Bytes?
-}
-
-model publications {
-  id            Int       @id @default(autoincrement())
-  name          String    @db.VarChar(1024)
-  participants  String?   @db.VarChar(2048)
-  isbn          String    @db.VarChar(17)
-  code_ebook    String?   @db.VarChar(14)
-  photo         Bytes?
-  pdf           Bytes?
-  filesName     String?   @db.VarChar(255)
-  key_words     String    @db.VarChar(1024)
-  doi           String    @db.VarChar(30)
-  year          Int
-  presentation  String    @db.VarChar(2048)
-  date_emission DateTime? @db.Date
-  ativo         Boolean   @default(true)
-  editor_pix    String    @db.VarChar(150)
-  editor_value  String    @db.VarChar(10)
-}
-
-model publications_chapter {
-  id             Int     @id @default(autoincrement())
-  name           String  @db.VarChar(1024)
-  authors        String? @db.VarChar(2048)
-  pdf            Bytes
-  key_words      String? @db.VarChar(1024)
-  doi            String? @db.VarChar(75)
-  presentation   String? @db.VarChar(2048)
-  id_publication Int
-  chapter        Int?
-  ativo          Int?
-  filesName      String? @db.VarChar(512)
-
-  @@index([id_publication], map: "FK_publications")
-}
-
-model refs {
-  id         Int    @id @default(autoincrement())
-  code_ebook String @db.VarChar(12)
-  content    String @db.VarChar(255)
-}
-
-model request {
-  id             String   @id @db.VarChar(50)
-  id_depositor   Int
-  id_publication Int?
-  title          String   @db.VarChar(255)
-  company        String   @db.VarChar(200)
-  edition        Int
-  isbn           String?  @db.VarChar(70)
-  link           String   @db.VarChar(70)
-  abstract       String   @db.TinyText
-  created_at     DateTime @db.DateTime(0)
-  status         Int
-}
-
-model request_chapter {
-  id         String   @id @db.VarChar(50)
-  id_request String   @db.VarChar(50)
-  title      String   @db.VarChar(255)
-  link       String   @db.VarChar(255)
-  abstract   String   @db.VarChar(2048)
-  first_page Int
-  last_page  Int
-  created_at DateTime @db.DateTime(0)
-}
-
-model request_chapter_author {
-  id         Int     @id @default(autoincrement())
-  id_chapter String  @db.VarChar(50)
-  name       String  @db.VarChar(255)
-  email      String? @db.VarChar(150)
-  instagram  String? @db.VarChar(150)
-}
-
-model request_contribuitor {
-  id         Int    @id @default(autoincrement())
-  id_request String @db.VarChar(50)
-  name       String @db.VarChar(255)
-
-  @@index([id_request], map: "fk_request_contribuitor_id_request")
-}
-
-model request_status {
-  id   Int    @id @default(autoincrement())
-  name String @db.VarChar(50)
-}
-
-model status_list {
-  code Int    @id @default(autoincrement())
-  name String @db.VarChar(100)
-}
-
-model status_list_college {
-  code Int    @id @default(autoincrement())
-  name String @db.VarChar(100)
-}
-
-model status_list_course {
-  id   Int    @id @default(autoincrement())
-  name String @db.VarChar(75)
-}
-
-model user_ebook {
-  id                    Int                 @id @default(autoincrement())
-  id_ebook              Int
-  code                  String              @db.VarChar(10)
-  type                  String              @db.VarChar(255)
-  id_user               Int
-  id_editor             Int
-  name                  String              @db.Text
-  price                 String              @db.VarChar(11)
-  description           String              @db.VarChar(255)
-  title                 String              @db.VarChar(512)
-  linkpay               String?             @db.VarChar(255)
-  content               Bytes               @db.Blob
-  author                String              @db.Text
-  author_affiliations   String              @db.Text
-  introduction          String              @db.Text
-  description_case      String              @db.Text
-  outcome               String              @db.Text
-  method                String              @db.Text
-  result_and_discussion String              @db.Text
-  conclusion            String              @db.Text
-  book_references       String              @db.Text
-  city                  String              @db.VarChar(255)
-  book_date             String              @db.VarChar(75)
-  status                Int
-  disapproved_text      String?             @db.VarChar(255)
-  editor_doc            Bytes?
-  editor_doc_size       String?             @db.VarChar(25)
-  user_ebook_coupon     user_ebook_coupon[]
-}
-
-model user_ebook_address {
-  id       Int    @id @default(autoincrement())
-  code     String @db.VarChar(14)
-  id_user  Int
-  zipcode  String @db.VarChar(10)
-  address  String @db.VarChar(255)
-  number   String @db.VarChar(5)
-  district String @db.VarChar(255)
-  city     String @db.VarChar(255)
-  state    String @db.VarChar(255)
-  document String @db.VarChar(50)
-}
-
-model user_ebook_author {
-  id        Int     @id @default(autoincrement())
-  name      String? @db.VarChar(155)
-  email     String? @db.VarChar(155)
-  instagram String? @db.VarChar(155)
-  id_ebook  Int
-}
-
-model user_ebook_coupon {
-  id            Int        @id @default(autoincrement())
-  id_coupon     Int
-  id_user_ebook Int
-  created_at    DateTime?  @default(now()) @db.DateTime(0)
-  coupon        coupon     @relation(fields: [id_coupon], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "user_ebook_coupon_ibfk_1")
-  user_ebook    user_ebook @relation(fields: [id_user_ebook], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "user_ebook_coupon_ibfk_2")
-
-  @@unique([id_coupon, id_user_ebook], map: "unique_coupon_user")
-  @@index([id_user_ebook], map: "id_user_ebook")
+  @@unique([number, emiter, serie], map: "UNIQUE_NUMBER")
 }
 
 model wp_users {
@@ -340,7 +36,7 @@ model wp_users {
   user_nicename       String   @default("") @db.VarChar(50)
   user_email          String   @default("") @db.VarChar(100)
   user_url            String   @default("") @db.VarChar(100)
-  user_registered     DateTime @default(dbgenerated("('0000-00-00 00:00:00')")) @db.DateTime(0)
+  user_registered     DateTime @default(dbgenerated("'0000-00-00 00:00:00'")) @db.DateTime(0)
   user_activation_key String   @default("") @db.VarChar(255)
   user_status         Int      @default(0)
   display_name        String   @default("") @db.VarChar(250)
@@ -351,31 +47,223 @@ model wp_users {
   @@index([user_nicename], map: "user_nicename")
 }
 
-model Magazine {
-  id          Int          @id @default(autoincrement())
-  title       String
-  description String
-  publishDate DateTime
-  status      String
-  coverImage  String
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  Submission  Submission[]
+model account {
+  id   Int    @id @default(autoincrement())
+  code Int
+  name String @db.VarChar(255)
 }
 
-model Submission {
-  id                    Int      @id @default(autoincrement())
-  articleType           String
-  title                 String
-  abstract              String
-  keywords              String
-  wordFile              String
-  committeeLetterFile   String
-  graphicalAbstractFile String
-  magazineId            Int      @default(1)
-  userId                Int      @default(1)
-  createdAt             DateTime @default(now())
-  Magazine              Magazine @relation(fields: [magazineId], references: [id])
+model account_value {
+  id         Int      @id @default(autoincrement())
+  id_account Int
+  id_user    Int
+  value      Float    @db.Float
+  old_value  Float    @db.Float
+  date       DateTime @db.DateTime(0)
+}
 
-  @@index([magazineId], map: "Submission_magazineId_fkey")
+model balcony_branch {
+  id        Int @id @default(autoincrement())
+  id_user   Int
+  id_branch Int
+}
+
+model balcony_values {
+  id                Int      @id @default(autoincrement())
+  user_id           Int
+  branch_office_id  Int
+  insert_date       DateTime @db.DateTime(0)
+  card              Float
+  cash              Float
+  pix               Float
+  user_last_changed Int?
+}
+
+model branch_office {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(255)
+}
+
+model closure {
+  id               Int      @id @default(autoincrement())
+  increase         Float
+  removed          Float
+  branch_office_id Int
+  date             DateTime @db.DateTime(0)
+}
+
+model expense {
+  id               Int       @id @default(autoincrement())
+  branch_office_id Int?
+  provider         String    @db.VarChar(255)
+  value            Float     @db.Float
+  payment_date     DateTime? @db.Date
+  approved_date    DateTime? @db.Date
+  description      String?   @db.Text
+  status           Int       @db.TinyInt
+  expense_type     Int       @db.TinyInt
+  category         Int?
+}
+
+model expense_type {
+  id   Int    @id @default(autoincrement())
+  name String @db.VarChar(255)
+}
+
+model hands_balance {
+  id    Int      @id @default(autoincrement())
+  name  String   @db.VarChar(255)
+  value Float    @db.Float
+  date  DateTime @db.DateTime(0)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model imports {
+  number Int
+
+  @@ignore
+}
+
+model income {
+  id    Int    @id @default(autoincrement())
+  value Int
+  name  String @db.VarChar(75)
+}
+
+model login {
+  id       Int    @id @default(autoincrement())
+  name     String @db.VarChar(255)
+  user     String @db.VarChar(255)
+  password String @db.VarChar(255)
+  sistem   String @db.VarChar(255)
+}
+
+model payment_date {
+  id            Int       @id @default(autoincrement())
+  id_payment    Int
+  number        BigInt
+  parcel_value  Float     @db.Float
+  parcel_date   DateTime  @db.Date
+  approved_date DateTime? @db.Date
+  status        Int       @db.TinyInt
+  insert_date   DateTime? @db.DateTime(0)
+  inserted_by   Int?
+}
+
+model payment_method {
+  id   Int    @id @default(autoincrement())
+  code Int
+  name String @db.VarChar(155)
+}
+
+model payment_status {
+  id   Int    @id
+  code Int
+  name String @db.VarChar(75)
+}
+
+model payment_xml_log {
+  id             Int       @id @default(autoincrement())
+  chave_acesso   String    @db.VarChar(50)
+  numero_nfe     String?   @db.VarChar(20)
+  emiter         String?   @db.VarChar(255)
+  destine        String?   @db.VarChar(255)
+  payment_method String?   @db.VarChar(10)
+  parcel_value   String?   @db.Text
+  parcel_date    String?   @db.Text
+  observation    String?   @db.Text
+  xml_content    String?   @db.LongText
+  error_message  String?   @db.Text
+  created_at     DateTime? @default(now()) @db.DateTime(0)
+}
+
+model permissions {
+  code Int    @id @default(autoincrement())
+  name String @db.VarChar(155)
+}
+
+model prevision_registred {
+  id         Int      @id @default(autoincrement())
+  year_month DateTime @db.Date
+  value      Float?   @db.Float
+  accounts   String   @db.VarChar(100)
+}
+
+model product {
+  id           Int    @id @default(autoincrement())
+  code         String @db.VarChar(20)
+  name         String @db.VarChar(255)
+  description  String @db.VarChar(255)
+  value_sistem Int
+  value_web    Int
+  shipping     Int
+  marcap       Int
+  value_exit   Int
+  link         String @db.Text
+}
+
+model table_save {
+  id      Int      @id @default(autoincrement())
+  id_user Int
+  date    DateTime @db.DateTime(0)
+  data    String   @db.MediumText
+}
+
+model tiny_order_products {
+  id          Int         @id @default(autoincrement()) @db.UnsignedInt
+  pedido_id   BigInt      @db.UnsignedBigInt
+  produto_id  BigInt      @db.UnsignedBigInt
+  codigo      String?     @db.VarChar(100)
+  nome        String?     @db.VarChar(255)
+  categoria   String?     @db.VarChar(255)
+  preco       Decimal?    @db.Decimal(15, 2)
+  preco_custo Decimal?    @db.Decimal(15, 2)
+  quantidade  Decimal     @default(1.000) @db.Decimal(15, 3)
+  created_at  DateTime    @default(now()) @db.DateTime(0)
+  tiny_orders tiny_orders @relation(fields: [pedido_id], references: [pedido_id], onDelete: Cascade, map: "fk_tiny_order_products_pedido")
+
+  @@unique([pedido_id, produto_id], map: "uk_tiny_order_products_pedido_produto")
+  @@index([produto_id], map: "idx_tiny_order_products_produto")
+}
+
+model tiny_orders {
+  id                  Int                   @id @default(autoincrement()) @db.UnsignedInt
+  pedido_id           BigInt                @unique(map: "uk_tiny_orders_pedido_id") @db.UnsignedBigInt
+  numero_pedido       String?               @db.VarChar(50)
+  total_pedido        Decimal?              @db.Decimal(15, 2)
+  id_vendedor         BigInt?               @db.UnsignedBigInt
+  nome_vendedor       String?               @db.VarChar(150)
+  forma_pagamento     String?               @db.VarChar(100)
+  deposito            String?               @db.VarChar(100)
+  cliente_nome        String?               @db.VarChar(200)
+  full_response       Json?
+  created_at          DateTime              @db.DateTime(0)
+  updated_at          DateTime?             @db.DateTime(0)
+  tiny_order_products tiny_order_products[]
+
+  @@index([cliente_nome], map: "idx_tiny_orders_cliente")
+  @@index([numero_pedido], map: "idx_tiny_orders_numero")
+  @@index([id_vendedor], map: "idx_tiny_orders_vendedor")
+}
+
+model tiny_raw_logs {
+  id          Int      @id @default(autoincrement())
+  method      String?  @db.VarChar(10)
+  headers     String?  @db.Text
+  body        String?  @db.LongText
+  ip_address  String?  @db.VarChar(45)
+  user_agent  String?  @db.VarChar(255)
+  received_at DateTime @db.DateTime(0)
+}
+
+model tiny_webhooks {
+  id          Int      @id @default(autoincrement())
+  payload     Json
+  received_at DateTime @db.DateTime(0)
+}
+
+model user_branch {
+  id        Int @id @default(autoincrement())
+  id_user   Int
+  id_branch Int
 }
