@@ -57,11 +57,27 @@ export default function PedidoFormPage() {
   const [showSuggestForItem, setShowSuggestForItem] = useState<Record<number, boolean>>({})
   const debounceTimers = useRef<Record<number, any>>({})
 
-  // Sugestões de clientes
-  type ClientSuggestion = { id: number; nome: string; cpf_cnpj?: string }
+  // Sugestões de clientes + papel do usuário
+  type ClientSuggestion = { id: number; nome: string; cpf_cnpj?: string; id_vendedor_externo?: string | null; nome_vendedor?: string | null; cidade?: string | null }
   const [clientSuggestions, setClientSuggestions] = useState<ClientSuggestion[]>([])
   const [showClientSuggest, setShowClientSuggest] = useState<boolean>(false)
   const clientDebounceRef = useRef<any>(null)
+  const [selectedClient, setSelectedClient] = useState<ClientSuggestion | null>(null)
+  const [meVendedor, setMeVendedor] = useState<{
+    tipo?: 'VENDEDOR' | 'TELEVENDAS' | null
+    id_vendedor_externo?: string | null
+    nome?: string | null
+  } | null>(null)
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch('/api/me/vendedor')
+        const j = await res.json()
+        if (j?.ok) setMeVendedor(j.data)
+      } catch {}
+    })()
+  }, [])
 
   // Submissão Tiny
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -93,14 +109,16 @@ export default function PedidoFormPage() {
   }
 
   useEffect(() => {
-    if (!isNew) {
-      const existing = getPedidoByNumero(idParam)
-      if (existing) {
-        setForm(existing)
+    (async () => {
+      if (!isNew) {
+        const existing = await getPedidoByNumero(idParam)
+        if (existing) {
+          setForm(existing)
+        }
+      } else {
+        setForm((f) => ({ ...f, numero: 0 }))
       }
-    } else {
-      setForm((f) => ({ ...f, numero: 0 }))
-    }
+    })()
   }, [idParam, isNew])
 
   const handleChange = (key: keyof Pedido, value: string | number | PedidoStatus) => {
@@ -109,17 +127,21 @@ export default function PedidoFormPage() {
 
   const onClienteChange = (value: string) => {
     setForm((f) => ({ ...f, cliente: value }))
+    setSelectedClient(null)
     if (clientDebounceRef.current) clearTimeout(clientDebounceRef.current)
     const trimmed = value.trim()
     if (trimmed.length >= 3) {
       clientDebounceRef.current = setTimeout(async () => {
         try {
-          const res = await fetch(`/api/contatos?q=${encodeURIComponent(trimmed)}`)
+          const res = await fetch(`/api/clientes?q=${encodeURIComponent(trimmed)}`)
           const data = await res.json()
-          const options: ClientSuggestion[] = (data?.retorno?.contatos || []).map((c: any) => ({
-            id: Number(c?.contato?.id ?? 0),
-            nome: c?.contato?.nome || c?.contato?.nome_fantasia || c?.contato?.razao_social || '',
-            cpf_cnpj: c?.contato?.cpf_cnpj || c?.contato?.cnpj || c?.contato?.cpf || '',
+          const options: ClientSuggestion[] = (data?.data || []).map((c: any) => ({
+            id: Number(c?.id ?? 0),
+            nome: c?.nome || '',
+            cpf_cnpj: c?.cpf_cnpj || '',
+            id_vendedor_externo: c?.id_vendedor_externo ?? null,
+            nome_vendedor: c?.nome_vendedor ?? null,
+            cidade: c?.cidade ?? null,
           })).filter((c: ClientSuggestion) => !!c.nome)
           setClientSuggestions(options)
           setShowClientSuggest(options.length > 0)
@@ -136,6 +158,7 @@ export default function PedidoFormPage() {
 
   const selectCliente = (opt: ClientSuggestion) => {
     setForm((f) => ({ ...f, cliente: opt.nome, cnpj: opt.cpf_cnpj || '' }))
+    setSelectedClient(opt)
     setShowClientSuggest(false)
   }
 
@@ -145,60 +168,29 @@ export default function PedidoFormPage() {
     setIsSubmitting(true)
 
     try {
-      // Monta payload Tiny
+      // Envio para Tiny desabilitado temporariamente: salvar apenas na plataforma
       const cpfCnpjDigits = onlyDigits(form.cnpj)
       const tipoPessoa = cpfCnpjDigits.length === 11 ? 'F' : (cpfCnpjDigits.length === 14 ? 'J' : '')
 
-      const tinyItens = itens
-        .filter((it) => (it.nome || '').trim() && it.quantidade > 0)
-        .map((it) => ({
-          item: {
-            ...(it.produtoId ? { id_produto: it.produtoId } : {}),
-            ...(it.sku ? { codigo: it.sku } : {}),
-            descricao: it.nome,
-            unidade: it.unidade,
-            quantidade: toTinyDecimal(it.quantidade),
-            valor_unitario: toTinyDecimal(it.preco || 0),
-          },
-        }))
+      const tinyItens: any[] = []
 
       const descontoValor = Math.max(0, (itens.reduce((acc, it) => acc + (it.quantidade * (it.preco || 0)), 0)) - (totalComDesconto || 0))
 
-      const tinyParcelas = parcelas.length > 0
-        ? parcelas.map((p) => ({ parcela: { data: formatDateBR(p.data), valor: toTinyDecimal(p.valor) } }))
-        : undefined
+      const tinyParcelas: any[] | undefined = undefined
 
-      const tinyPedido: any = {
-        data_pedido: form.data ? formatDateBR(form.data) : formatDateBR(new Date()),
-        cliente: {
-          nome: form.cliente,
-          ...(cpfCnpjDigits ? { cpf_cnpj: cpfCnpjDigits } : {}),
-          ...(tipoPessoa ? { tipo_pessoa: tipoPessoa } : {}),
-          atualizar_cliente: 'S',
-        },
-        itens: tinyItens,
-        ...(descontoValor > 0 ? { valor_desconto: toTinyDecimal(descontoValor) } : {}),
-        ...(tinyParcelas ? { parcelas: tinyParcelas } : {}),
-        ...(formaRecebimento ? { meio_pagamento: formaRecebimento } : {}),
-        nome_vendedor: 'Daniel Meirelles',
-      }
-
-      const res = await fetch('/api/pedidos/incluir', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pedido: tinyPedido }),
+      // Apenas salvar localmente na plataforma
+      const saved = await savePedido({
+        ...form,
+        total: totalComDesconto,
+        id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
+        client_vendor_externo: selectedClient?.id_vendedor_externo || null,
       })
-      const data = await res.json()
-
-      if (!res.ok || (data?.retorno?.status && data.retorno.status !== 'OK')) {
-        const msg = data?.retorno?.erros?.map((e: any) => e?.erro)?.join('; ') || data?.erro || 'Falha ao incluir pedido'
-        setSubmitError(msg)
+      if (isNew) {
+        router.push('/pedidos')
       } else {
-        // Sucesso também no Tiny: mantém fluxo local
-        const saved = savePedido(form)
         router.push(`/pedidos/${saved.numero}`)
-        return
       }
+      return
     } catch (err: any) {
       setSubmitError('Erro inesperado ao enviar o pedido')
     } finally {
@@ -377,11 +369,21 @@ export default function PedidoFormPage() {
                     ))}
                   </div>
                 )}
+                {meVendedor?.tipo === 'TELEVENDAS' && selectedClient && (
+                  <div className="small mt-2">
+                    <span className="text-muted">Vendedor do cliente: </span>
+                    <span className="fw-semibold">{selectedClient.nome_vendedor || (selectedClient.id_vendedor_externo ? selectedClient.id_vendedor_externo : '—')}</span>
+                    <span className="ms-2">•</span>
+                    <span className="ms-2">
+                      Comissão: {selectedClient.id_vendedor_externo ? '1%' : '5%'}
+                    </span>
+                  </div>
+                )}
               </div>
             </Col>
             <Col lg={3}>
               <Form.Label>Vendedor</Form.Label>
-              <Form.Control type="text" value="Daniel Meirelles" disabled />
+              <Form.Control type="text" value={meVendedor?.nome || meVendedor?.id_vendedor_externo || ''} disabled />
             </Col>
             <Col lg={3} className="d-flex justify-content-lg-end">
               {/* <Button variant="outline-primary" onClick={() => router.push('/customers/add')}>

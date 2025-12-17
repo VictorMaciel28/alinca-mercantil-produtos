@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-type Linha = { id: number; id_vendedor_externo: string; nome?: string | null; cidade: string }
+type Linha = { id: number; id_vendedor_externo: string; nome?: string | null; cidades: string[] }
 type Vendedor = { id: number; id_vendedor_externo?: string | null; nome: string }
 
 export default function TelevendasPage() {
@@ -17,6 +17,7 @@ export default function TelevendasPage() {
   const [telSelected, setTelSelected] = useState<{ externo: string; nome: string } | null>(null)
   const [citySearch, setCitySearch] = useState('')
   const [citySelected, setCitySelected] = useState<string | null>(null)
+  const [citySelectedList, setCitySelectedList] = useState<string[]>([])
 
   const load = async () => {
     setLoading(true)
@@ -45,6 +46,7 @@ export default function TelevendasPage() {
     setEditing(null)
     setTelSelected(null)
     setCitySelected(null)
+    setCitySelectedList([])
     setTelSearch('')
     setCitySearch('')
     setShowModal(true)
@@ -53,7 +55,8 @@ export default function TelevendasPage() {
   const openEdit = (r: Linha) => {
     setEditing(r)
     setTelSelected({ externo: r.id_vendedor_externo, nome: r.nome || r.id_vendedor_externo })
-    setCitySelected(r.cidade)
+    setCitySelected(null)
+    setCitySelectedList(r.cidades || [])
     setTelSearch('')
     setCitySearch('')
     setShowModal(true)
@@ -71,13 +74,16 @@ export default function TelevendasPage() {
   const cityOptions = useMemo(() => {
     const q = citySearch.trim().toLowerCase()
     if (!q) return []
-    return cidades.filter((c) => c.toLowerCase().includes(q)).slice(0, 10)
-  }, [cidades, citySearch])
+    return cidades
+      .filter((c) => c.toLowerCase().includes(q) && !citySelectedList.includes(c))
+      .slice(0, 10)
+  }, [cidades, citySearch, citySelectedList])
 
   const save = async () => {
     if (!telSelected) return alert('Selecione Telemarketing (vendedor)')
-    if (!citySelected) return alert('Selecione a cidade')
-    const payload = { vendedor_externo: telSelected.externo, nome: telSelected.nome, cidade: citySelected }
+    const selected = citySelectedList.length > 0 ? citySelectedList : (citySelected ? [citySelected] : [])
+    if (selected.length === 0) return alert('Selecione ao menos uma cidade')
+    const payload = { vendedor_externo: telSelected.externo, nome: telSelected.nome, cidades: selected }
     const res = await fetch('/api/televendas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     const json = await res.json()
     if (!json?.ok) return alert(json?.error || 'Erro ao salvar')
@@ -101,7 +107,7 @@ export default function TelevendasPage() {
               <tr>
                 <th>ID Externo</th>
                 <th>Nome</th>
-                <th>Cidade Atribuída</th>
+                <th>Cidades Atribuídas</th>
                 <th style={{ width: 1 }}></th>
               </tr>
             </thead>
@@ -110,7 +116,7 @@ export default function TelevendasPage() {
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(r)}>
                   <td>{r.id_vendedor_externo}</td>
                   <td>{r.nome || '-'}</td>
-                  <td>{r.cidade}</td>
+                  <td>{(r.cidades || []).join(', ')}</td>
                   <td className="text-end">
                     <button
                       className="btn btn-sm btn-danger"
@@ -162,44 +168,51 @@ export default function TelevendasPage() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Cidade (digite para buscar e selecione)</label>
-                  {editing ? (
-                    <>
-                      <input
-                        className="form-control mb-2"
-                        placeholder="Buscar cidade..."
-                        value={citySelected ?? citySearch}
-                        onChange={(e) => {
-                          setCitySelected(e.target.value)
-                          setCitySearch(e.target.value)
-                        }}
-                      />
-                      <div className="list-group">
-                        {cityOptions.map((c) => (
-                          <button key={c} type="button" className="list-group-item list-group-item-action" onClick={() => setCitySelected(c)}>
-                            {c}
+                  <label className="form-label">Cidades (digite para buscar e selecione)</label>
+                  <input
+                    className="form-control mb-2"
+                    placeholder="Buscar cidade..."
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                  />
+                  {cityOptions.length > 0 && (
+                    <div className="list-group mb-2">
+                      {cityOptions.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className="list-group-item list-group-item-action"
+                          onClick={() => {
+                            setCitySelectedList((list) => Array.from(new Set([...list, c])))
+                            setCitySearch('')
+                          }}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {citySelectedList.length > 0 && (
+                    <div className="d-flex flex-wrap gap-2">
+                      {citySelectedList.map((c) => (
+                        <span key={c} className="badge bg-secondary">
+                          {c}{' '}
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-link text-white ms-1 p-0"
+                            onClick={() => setCitySelectedList((list) => list.filter((x) => x !== c))}
+                            aria-label={`Remover ${c}`}
+                          >
+                            ×
                           </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : !citySelected ? (
-                    <>
-                      <input className="form-control mb-2" placeholder="Buscar cidade..." value={citySearch} onChange={(e) => setCitySearch(e.target.value)} />
-                      <div className="list-group">
-                        {cityOptions.map((c) => (
-                          <button key={c} type="button" className="list-group-item list-group-item-action" onClick={() => setCitySelected(c)}>
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <input className="form-control" readOnly value={citySelected} />
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => { setShowModal(false); setTelSelected(null); setCitySelected(null); setTelSearch(''); setCitySearch('') }}>Cancelar</button>
+                <button className="btn btn-secondary" onClick={() => { setShowModal(false); setTelSelected(null); setCitySelected(null); setCitySelectedList([]); setTelSearch(''); setCitySearch('') }}>Cancelar</button>
                 <button className="btn btn-primary" onClick={save}>Salvar</button>
               </div>
             </div>

@@ -62,4 +62,10 @@ export const MENU_ITEMS: MenuItemType[] = [
       },
     ],
   },
+  {
+    key: 'comissoes',
+    label: 'Comissões',
+    icon: 'ri:money-dollar-circle-line',
+    url: '/comissoes',
+  },
 ]

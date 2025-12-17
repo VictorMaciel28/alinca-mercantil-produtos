@@ -3,19 +3,26 @@ import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   try {
-    const rows = await prisma.cliente.findMany({
-      where: { cidade: { not: null }, NOT: { cidade: '' } },
-      distinct: ['cidade'],
+    const fromClients = await prisma.cliente.findMany({
+      where: { cidade: { not: null } },
       select: { cidade: true },
+      distinct: ['cidade'],
       orderBy: { cidade: 'asc' },
-      take: 2000,
     })
-    const cidades = rows.map((r) => r.cidade!)
-    return NextResponse.json({ ok: true, data: cidades })
+
+    const fromLinks = await prisma.telemarketing_city.findMany({
+      select: { cidade: true },
+      distinct: ['cidade'],
+      orderBy: { cidade: 'asc' },
+    })
+
+    const set = new Set<string>()
+    for (const r of fromClients) if (r.cidade) set.add(r.cidade)
+    for (const r of fromLinks) if (r.cidade) set.add(r.cidade)
+
+    const data = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return NextResponse.json({ ok: true, data })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao listar cidades' }, { status: 500 })
   }
 }
-
-
-

@@ -12,7 +12,10 @@ export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
 
   useEffect(() => {
-    setPedidos(getPedidos())
+    (async () => {
+      const rows = await getPedidos()
+      setPedidos(rows)
+    })()
   }, [])
 
   const [termoBusca, setTermoBusca] = useState("");
