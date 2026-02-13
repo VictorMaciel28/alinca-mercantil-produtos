@@ -68,4 +68,18 @@ export const MENU_ITEMS: MenuItemType[] = [
     icon: 'ri:money-dollar-circle-line',
     url: '/comissoes',
   },
+  {
+    key: 'supervisao',
+    label: 'Supervisão',
+    icon: 'ri:team-line',
+    children: [
+      {
+        key: 'supervisao-vendas',
+        label: 'Vendas',
+        icon: 'ri:bar-chart-2-line',
+        url: '/supervisao/vendas',
+        parentKey: 'supervisao',
+      },
+    ],
+  },
 ]

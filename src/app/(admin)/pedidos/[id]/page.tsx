@@ -35,6 +35,18 @@ export default function PedidoFormPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [showSearch, setShowSearch] = useState(false)
 
+  // Catálogo de produtos (listagem com rolagem e busca)
+  type CatalogItem = { id: number; nome: string; codigo?: string; preco?: number; imagem?: string | null }
+  const [catalog, setCatalog] = useState<CatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [catalogSelected, setCatalogSelected] = useState<CatalogItem | null>(null)
+  const [showCatalogDetail, setShowCatalogDetail] = useState(false)
+  const catalogDebounceRef = useRef<any>(null)
+  const [catalogDetail, setCatalogDetail] = useState<{ nome?: string; codigo?: string; preco?: number; unidade?: string; imagem?: string | null; descricao?: string | null; estoque?: number | null } | null>(null)
+  const [catalogDetailLoading, setCatalogDetailLoading] = useState(false)
+  const [catalogDetailError, setCatalogDetailError] = useState<string | null>(null)
+
   // Histórico de produtos
   type HistoryItem = {
     id: number
@@ -120,6 +132,112 @@ export default function PedidoFormPage() {
       }
     })()
   }, [idParam, isNew])
+
+  // Carregar catálogo inicial (100 itens) e buscar com debounce quando query >= 3
+  useEffect(() => {
+    const run = async (q: string) => {
+      setCatalogLoading(true)
+      try {
+        const res = await fetch(`/api/produtos?q=${encodeURIComponent(q)}`)
+        const data = await res.json()
+        const items: CatalogItem[] = (data?.retorno?.produtos || []).map((p: any) => ({
+          id: Number(p?.produto?.id ?? 0),
+          nome: p?.produto?.nome ?? '',
+          codigo: p?.produto?.codigo ?? undefined,
+          preco: p?.produto?.preco != null ? Number(p?.produto?.preco) : undefined,
+          imagem: p?.produto?.imagem ?? null,
+        })).filter((x: CatalogItem) => !!x.nome)
+        setCatalog(items)
+      } finally {
+        setCatalogLoading(false)
+      }
+    }
+
+    if (!catalogQuery || catalogQuery.trim().length === 0) {
+      run('')
+      return
+    }
+    if (catalogQuery.trim().length < 3) return
+    if (catalogDebounceRef.current) clearTimeout(catalogDebounceRef.current)
+    catalogDebounceRef.current = setTimeout(() => run(catalogQuery.trim()), 600)
+  }, [catalogQuery])
+
+  const addFromCatalog = (p: CatalogItem) => {
+    setItens((arr) => {
+      // Se já existe por SKU, incrementa quantidade
+      const idx = arr.findIndex((it) => (it.sku || '').toLowerCase() === (p.codigo || '').toLowerCase())
+      if (idx >= 0) {
+        const next = [...arr]
+        next[idx] = { ...next[idx], quantidade: next[idx].quantidade + 1 }
+        return next
+      }
+      const nextId = arr.reduce((m, it) => Math.max(m, it.id), 0) + 1
+      return [
+        ...arr,
+        {
+          id: nextId,
+          nome: p.nome,
+          sku: p.codigo,
+          quantidade: 1,
+          unidade: 'PC',
+          preco: Number(p.preco || 0),
+          imagemUrl: p.imagem || undefined,
+        },
+      ]
+    })
+  }
+
+  const removeFromCatalog = (p: CatalogItem) => {
+    setItens((arr) => {
+      const idx = arr.findIndex((it) => (it.sku || '').toLowerCase() === (p.codigo || '').toLowerCase())
+      if (idx < 0) return arr
+      const curr = arr[idx]
+      const next = [...arr]
+      if (curr.quantidade > 1) {
+        next[idx] = { ...curr, quantidade: curr.quantidade - 1 }
+      } else {
+        next.splice(idx, 1)
+      }
+      return next
+    })
+  }
+
+  const openCatalogDetail = (p: CatalogItem) => {
+    setCatalogSelected(p)
+    setCatalogDetail(null)
+    setCatalogDetailError(null)
+    setShowCatalogDetail(true)
+    ;(async () => {
+      setCatalogDetailLoading(true)
+      try {
+        const [prodRes, estoqueRes] = await Promise.all([
+          fetch(`/api/produtos/${p.id}`),
+          fetch(`/api/produtos/${p.id}/estoque`),
+        ])
+        const prod = await prodRes.json()
+        const est = await estoqueRes.json().catch(() => ({ totalEstoque: null }))
+        setCatalogDetail({
+          nome: prod?.nome ?? p.nome,
+          codigo: prod?.codigo ?? p.codigo,
+          preco: prod?.preco != null ? Number(prod.preco) : (p.preco ?? undefined),
+          unidade: prod?.unidade ?? undefined,
+          imagem: prod?.imagem ?? p.imagem ?? null,
+          descricao: prod?.descricao ?? null,
+          estoque: est?.totalEstoque != null ? Number(est.totalEstoque) : null,
+        })
+      } catch (e: any) {
+        setCatalogDetailError('Falha ao carregar detalhes do produto')
+      } finally {
+        setCatalogDetailLoading(false)
+      }
+    })()
+  }
+
+  const getQtdInOrderBySku = (sku?: string) => {
+    if (!sku) return 0
+    const s = (sku || '').toLowerCase()
+    return itens.filter((it) => (it.sku || '').toLowerCase() === s).reduce((acc, it) => acc + (it.quantidade || 0), 0)
+  }
 
   const handleChange = (key: keyof Pedido, value: string | number | PedidoStatus) => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -398,11 +516,57 @@ export default function PedidoFormPage() {
       <Card className="border-0 shadow-sm mb-3">
         <Card.Header className="bg-white d-flex justify-content-between align-items-center">
           <div className="fw-semibold">Produtos</div>
-          <Button size="sm" variant="outline-primary" onClick={addItem}>
-            <IconifyIcon icon="ri:add-line" className="me-1" /> Adicionar produto
-          </Button>
         </Card.Header>
         <Card.Body>
+          {/* Catálogo com rolagem e busca */}
+          <div className="mb-3">
+            <Form.Label className="fw-semibold">Buscar no catálogo (mostrando 100 itens)</Form.Label>
+            <Form.Control
+              type="text"
+              placeholder="Digite ao menos 3 caracteres para filtrar"
+              value={catalogQuery}
+              onChange={(e) => setCatalogQuery(e.target.value)}
+            />
+            <div className="mt-2 border rounded" style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {catalogLoading ? (
+                <div className="p-2 small text-muted">Carregando produtos...</div>
+              ) : catalog.length === 0 ? (
+                <div className="p-2 small text-muted">Nenhum produto encontrado.</div>
+              ) : (
+                <div className="list-group list-group-flush">
+                  {catalog.map((p) => (
+                    <div key={p.id} className="list-group-item py-2 d-flex justify-content-between align-items-center">
+                      <div className="me-2">
+                        <div className="fw-semibold small">{p.nome}</div>
+                        <div className="text-muted small">SKU: {p.codigo || '-'}</div>
+                        {p.preco != null && (
+                          <div className="text-muted small">Preço: {Number(p.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                        )}
+                      </div>
+                      <div className="d-flex gap-1">
+                        {/* Quantidade atual no pedido para este SKU */}
+                        {getQtdInOrderBySku(p.codigo) > 0 && (
+                          <span className="badge bg-secondary align-self-center me-1" title="Quantidade no pedido">
+                            {getQtdInOrderBySku(p.codigo)}
+                          </span>
+                        )}
+                        <Button variant="outline-secondary" size="sm" title="Detalhes" onClick={() => openCatalogDetail(p)}>
+                          <IconifyIcon icon="ri:search-line" />
+                        </Button>
+                        <Button variant="outline-secondary" size="sm" title="Remover 1" onClick={() => removeFromCatalog(p)}>
+                          <IconifyIcon icon="ri:subtract-line" />
+                        </Button>
+                        <Button variant="primary" size="sm" title="Adicionar 1" onClick={() => addFromCatalog(p)}>
+                          <IconifyIcon icon="ri:add-line" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Desktop (md+) */}
           <div className="table-responsive d-none d-md-block" style={{ overflow: 'visible' }}>
             <Table hover className="mb-0">
@@ -729,6 +893,46 @@ export default function PedidoFormPage() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowPreview(false)}>Fechar</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Detalhes do produto do catálogo */}
+      <Modal show={showCatalogDetail} onHide={() => setShowCatalogDetail(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Detalhes do produto</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {catalogDetailLoading ? (
+            <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /><span>Carregando detalhes...</span></div>
+          ) : catalogDetailError ? (
+            <div className="text-danger small">{catalogDetailError}</div>
+          ) : !catalogSelected ? (
+            <div className="text-muted small">Nenhum produto selecionado.</div>
+          ) : (
+            <div>
+              <div className="mb-2"><strong>Nome:</strong> {catalogDetail?.nome ?? catalogSelected.nome}</div>
+              <div className="mb-2"><strong>SKU:</strong> {(catalogDetail?.codigo ?? catalogSelected.codigo) || '-'}</div>
+              <div className="mb-2"><strong>Preço:</strong> {Number((catalogDetail?.preco ?? catalogSelected.preco) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              {catalogDetail?.unidade && <div className="mb-2"><strong>Unidade:</strong> {catalogDetail.unidade}</div>}
+              {catalogDetail?.estoque != null && <div className="mb-2"><strong>Estoque:</strong> {catalogDetail.estoque}</div>}
+              {catalogDetail?.descricao && <div className="mb-2"><strong>Descrição:</strong> <div className="small text-muted">{catalogDetail.descricao}</div></div>}
+              <div className="text-center">
+                {(catalogDetail?.imagem ?? catalogSelected.imagem) ? (
+                  <img src={(catalogDetail?.imagem ?? catalogSelected.imagem) as string} alt={catalogDetail?.nome ?? catalogSelected.nome} className="img-fluid" />
+                ) : (
+                  <div className="text-muted">Sem imagem disponível</div>
+                )}
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          {catalogSelected && !catalogDetailLoading && (
+            <Button variant="primary" onClick={() => { addFromCatalog({ ...catalogSelected, preco: catalogDetail?.preco ?? catalogSelected.preco, imagem: catalogDetail?.imagem ?? catalogSelected.imagem }); setShowCatalogDetail(false) }}>
+              Adicionar ao pedido
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => setShowCatalogDetail(false)}>Fechar</Button>
         </Modal.Footer>
       </Modal>
 
