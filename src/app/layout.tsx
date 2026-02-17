@@ -5,6 +5,7 @@ import { Figtree } from 'next/font/google'
 import Image from 'next/image'
 import NextTopLoader from 'nextjs-toploader'
 import '@/assets/scss/app.scss'
+import './globals.css'
 import { DEFAULT_PAGE_TITLE } from '@/context/constants'
 import { LanguageProvider } from '@/contexts/LanguageContext'
 
