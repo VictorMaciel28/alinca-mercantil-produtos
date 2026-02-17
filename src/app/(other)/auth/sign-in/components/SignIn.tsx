@@ -1,6 +1,5 @@
 'use client'
 import logoDark from '@/assets/images/logo-dark.png'
-import LogoLight from '@/assets/images/logo-light.png'
 import TextFormInput from '@/components/from/TextFormInput'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 import { yupResolver } from '@hookform/resolvers/yup'
@@ -39,10 +38,7 @@ const SignIn = () => {
               <CardBody className="px-3 py-5">
                 <div className="mx-auto mb-4 text-center auth-logo">
                   <Link href="/dashboards/analytics" className="logo-dark">
-                    <Image src={logoDark} height={32} alt="logo dark" />
-                  </Link>
-                  <Link href="/dashboards/analytics" className="logo-light">
-                    <Image src={LogoLight} height={28} alt="logo light" />
+                    <Image src={logoDark} height={48} alt="logo dark" />
                   </Link>
                 </div>
                 <h2 className="fw-bold text-uppercase text-center fs-18">Sign In</h2>
@@ -56,6 +52,7 @@ const SignIn = () => {
                         placeholder="Enter your email"
                         className="bg-light bg-opacity-50 border-light py-2"
                         label="Email"
+                        autoComplete="off"
                       />
                     </div>
                     <div className="mb-3">
@@ -68,6 +65,8 @@ const SignIn = () => {
                         placeholder="Enter your password"
                         className="bg-light bg-opacity-50 border-light py-2"
                         label="Password"
+                        type="password"
+                        autoComplete="off"
                       />
                     </div>
                     <div className="mb-3">
@@ -84,20 +83,7 @@ const SignIn = () => {
                       </button>
                     </div>
                   </form>
-                  <p className="mt-3 fw-semibold no-span">OR sign with</p>
-                  <div className="text-center">
-                    <Button variant="outline-light" className="shadow-none">
-                      <IconifyIcon icon="bxl:google" className="fs-20" />
-                    </Button>
-                    &nbsp;
-                    <Button variant="outline-light" className="shadow-none">
-                      <IconifyIcon icon="ri:facebook-fill" height={32} width={20} className="" />
-                    </Button>
-                    &nbsp;
-                    <Button variant="outline-light" className="shadow-none">
-                      <IconifyIcon icon="bxl:github" className="fs-20" />
-                    </Button>
-                  </div>
+                  {/* Social login buttons removed per request */}
                 </div>
               </CardBody>
             </Card>

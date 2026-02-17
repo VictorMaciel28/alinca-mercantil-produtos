@@ -1,5 +1,4 @@
 import logoDark from '@/assets/images/logo-dark.png'
-import logoLight from '@/assets/images/logo-light.png'
 import logoSm from '@/assets/images/logo-sm.png'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -13,7 +12,7 @@ const LogoBox = () => {
       </Link>
       <Link href="/dashboards/analytics" className="logo-light">
         <Image width={44} height={44} src={logoSm} className="logo-sm" alt="logo sm" />
-        <Image width={224} height={56} src={logoLight} className="logo-lg" alt="logo light" />
+        <Image width={224} height={56} src={logoDark} className="logo-lg" alt="logo dark" />
       </Link>
     </div>
   )

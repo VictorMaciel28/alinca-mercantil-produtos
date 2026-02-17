@@ -12,7 +12,7 @@ import { ChildrenType } from '@/types/component-props'
 
 const AppProvidersWrapper = ({ children }: ChildrenType) => {
   const handleChangeTitle = () => {
-    if (document.visibilityState == 'hidden') document.title = 'Please come back 🥺'
+    if (document.visibilityState == 'hidden') document.title = 'SAMA'
     else document.title = DEFAULT_PAGE_TITLE
   }
 

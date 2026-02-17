@@ -2,7 +2,7 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { randomBytes } from 'crypto';
 import { PrismaClient } from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
+import { decryptPassword } from '@/lib/crypto'
 import PasswordHash from 'wordpress-hash-node';
 
 // Extend the Session type to include user.id
@@ -39,27 +39,28 @@ export const options: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const users = await prisma.$queryRawUnsafe(
-          'SELECT ID, user_login, user_pass, user_email FROM wp_users WHERE user_email = ?',
-          credentials.email
-        ) as {
-          ID: number;
-          user_login: string;
-          user_pass: string;
-          user_email: string;
-        }[];
+        // Try find vendor by email
+        const vend = await prisma.vendedor.findFirst({
+          where: { email: credentials.email.toString().trim() },
+        })
+        if (!vend) throw new Error('User not found')
 
-        const user = users[0];
-        if (!user) throw new Error('User not found');
+        if (!vend.senha_encrypted) throw new Error('User has no password set')
 
-       const isValid = await bcrypt.compare(credentials.password, user.user_pass);
+        let plain = ''
+        try {
+          plain = decryptPassword(vend.senha_encrypted)
+        } catch (err) {
+          throw new Error('Invalid stored password')
+        }
 
-        if (!isValid) throw new Error('Invalid password');
+        if (plain !== credentials.password) throw new Error('Invalid password')
+
         return {
-          id: String(user.ID),
-          name: user.user_login,
-          email: user.user_email,
-        };
+          id: String(vend.id),
+          name: vend.nome,
+          email: vend.email ?? credentials.email,
+        }
       }
     }),
   ],
@@ -95,7 +96,8 @@ export const options: NextAuthOptions = {
 
   session: {
     strategy: 'jwt',
-    maxAge: 24 * 60 * 60,
+    // Keep session effectively never-expiring by setting a very large maxAge (10 years)
+    maxAge: 10 * 365 * 24 * 60 * 60,
     generateSessionToken: () => randomBytes(32).toString('hex'),
   },
 };

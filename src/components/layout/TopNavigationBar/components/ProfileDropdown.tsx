@@ -2,9 +2,11 @@ import avatarNeutral from '@/assets/images/users/avatar-neutral.png'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useMemo } from 'react'
 import { Dropdown, DropdownHeader, DropdownItem, DropdownMenu, DropdownToggle } from 'react-bootstrap'
 
 const ProfileDropdown = () => {
+  const origin = useMemo(() => (typeof window !== 'undefined' ? window.location.origin : ''), [])
   return (
     <Dropdown className="topbar-item" drop="down">
       <DropdownToggle
@@ -23,7 +25,7 @@ const ProfileDropdown = () => {
         <DropdownHeader as={'h6'} className="dropdown-header">
           Welcome Gaston!
         </DropdownHeader>
-        <DropdownItem as={Link} href="/profile">
+        {/* <DropdownItem as={Link} href="/profile">
           <IconifyIcon icon="solar:calendar-broken" className="align-middle me-2 fs-18" />
           <span className="align-middle">My Schedules</span>
         </DropdownItem>
@@ -38,9 +40,9 @@ const ProfileDropdown = () => {
         <DropdownItem as={Link} href="/auth/lock-screen">
           <IconifyIcon icon="solar:lock-keyhole-broken" className="align-middle me-2 fs-18" />
           <span className="align-middle">Lock screen</span>
-        </DropdownItem>
+        </DropdownItem> */}
         <div className="dropdown-divider my-1" />
-        <DropdownItem as={Link} className=" text-danger" href="/auth/sign-in">
+        <DropdownItem as="a" className=" text-danger" href={`${origin}/auth/sign-in`}>
           <IconifyIcon icon="solar:logout-3-broken" className="align-middle me-2 fs-18" />
           <span className="align-middle">Logout</span>
         </DropdownItem>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
 type Vendedor = {
   id: number
@@ -9,6 +10,8 @@ type Vendedor = {
   nome: string
   email?: string | null
   tipo_acesso?: 'VENDEDOR' | 'TELEVENDAS' | null
+  nivel_acesso?: 'SUPERVISOR' | 'ADMINISTRADOR' | null
+  senha?: string | null
 }
 
 export default function VendedoresPage() {
@@ -21,6 +24,9 @@ export default function VendedoresPage() {
   const [formNome, setFormNome] = useState('')
   const [formEmail, setFormEmail] = useState<string | ''>('')
   const [formTipo, setFormTipo] = useState<'VENDEDOR' | 'TELEVENDAS' | ''>('')
+  const [formNivel, setFormNivel] = useState<'SUPERVISOR' | 'ADMINISTRADOR' | ''>('')
+  const [formPassword, setFormPassword] = useState<string>('')
+  const [showPassword, setShowPassword] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -60,6 +66,8 @@ export default function VendedoresPage() {
     setFormNome(v.nome || '')
     setFormEmail(v.email || '')
     setFormTipo((v.tipo_acesso as any) || '')
+    setFormNivel((v.nivel_acesso as any) || '')
+    setFormPassword((v as any).senha || '')
     setShowModal(true)
   }
 
@@ -73,6 +81,8 @@ export default function VendedoresPage() {
     if (editing.id_vendedor_externo) {
       payload.id_vendedor_externo = editing.id_vendedor_externo
       if (formTipo) payload.tipo_acesso = formTipo
+      if (formNivel) payload.nivel_acesso = formNivel
+      if (formPassword) payload.password = formPassword
     }
     const res = await fetch('/api/vendedores', {
       method: 'POST',
@@ -108,7 +118,8 @@ export default function VendedoresPage() {
                 <th>ID Externo</th>
                 <th>Nome</th>
                 <th>Email</th>
-                <th>Tipo de Acesso</th>
+                  <th>Tipo de Acesso</th>
+                <th>Nível de Acesso</th>
                 <th style={{ width: 1 }}>Ações</th>
               </tr>
             </thead>
@@ -126,6 +137,7 @@ export default function VendedoresPage() {
                   <td>{v.nome}</td>
                   <td>{v.email ?? '-'}</td>
                   <td>{v.tipo_acesso ? (v.tipo_acesso === 'TELEVENDAS' ? 'Televendas' : 'Vendedor') : '-'}</td>
+                  <td>{v.nivel_acesso ? (v.nivel_acesso === 'ADMINISTRADOR' ? 'Administrador' : 'Supervisor') : '-'}</td>
                   <td>
                     <button
                       className="btn btn-sm btn-secondary"
@@ -203,6 +215,44 @@ export default function VendedoresPage() {
                       Defina um ID Externo para relacionar o tipo.
                     </small>
                   )}
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Nível de Acesso</label>
+                  <select
+                    className="form-select"
+                    value={formNivel}
+                    onChange={(e) => setFormNivel(e.target.value as any)}
+                    disabled={!editing?.id_vendedor_externo}
+                  >
+                    <option value="">-</option>
+                    <option value="SUPERVISOR">Supervisor</option>
+                    <option value="ADMINISTRADOR">Administrador</option>
+                  </select>
+                  {!editing?.id_vendedor_externo && (
+                    <small className="text-muted">
+                      Defina um ID Externo para relacionar o nível.
+                    </small>
+                  )}
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Senha (preencher para permitir login)</label>
+                  <div className="input-group">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      className="form-control"
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      placeholder="Deixe em branco para não alterar"
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => setShowPassword((s) => !s)}
+                    >
+                      <IconifyIcon icon={showPassword ? 'mdi:eye-off' : 'mdi:eye'} className="fs-18" />
+                    </button>
+                  </div>
+                  <small className="text-muted">Ao definir uma senha, este vendedor poderá acessar o sistema usando o e-mail e a senha.</small>
                 </div>
               </div>
               <div className="modal-footer">
