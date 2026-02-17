@@ -87,12 +87,12 @@ const SignIn = () => {
                 </div>
               </CardBody>
             </Card>
-            <p className="mb-0 text-center text-white">
+            {/* <p className="mb-0 text-center text-white">
               New here?{' '}
               <Link href="/auth/sign-up" className="text-reset text-unline-dashed fw-bold ms-1">
                 Sign Up
               </Link>
-            </p>
+            </p> */}
           </Col>
         </Row>
       </Container>
