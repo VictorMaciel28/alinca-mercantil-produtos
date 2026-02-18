@@ -8,7 +8,7 @@ module.exports = {
   },
   experimental: {
     workerThreads: false, // desativa threads múltiplos
-    cpus: 0.5,               // força usar 1 “CPU” para build/export
+    cpus: 1,               // força usar 1 “CPU” para build/export
   },
   eslint: {
     // ✅ Evita o ESLint travar o build no CI
