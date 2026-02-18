@@ -16,7 +16,7 @@ module.exports = {
     };
     // Limit webpack parallelism/workers to avoid spawning too many processes
     // (e.g. on constrained shared machines). Adjust NUMBER below as needed.
-    const NUMBER = 80;
+    const NUMBER = 60;
     try {
       // global parallelism (Webpack 5)
       config.parallelism = NUMBER;
