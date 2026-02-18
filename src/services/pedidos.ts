@@ -1,4 +1,4 @@
-export type PedidoStatus = 'Pendente' | 'Pago' | 'Cancelado' | 'Faturado' | 'Em aberto' | 'Entregue'
+export type PedidoStatus = 'Pendente' | 'Pago' | 'Cancelado' | 'Faturado' | 'Em aberto' | 'Entregue' | 'Proposta'
 
 export interface Pedido {
   numero: number

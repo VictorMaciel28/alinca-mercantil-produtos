@@ -5,7 +5,7 @@ import { options } from '@/app/api/auth/[...nextauth]/options'
 
 export async function GET() {
   try {
-    const session = await getServerSession(options as any)
+    const session = (await getServerSession(options as any)) as any
     if (!session?.user?.id) return NextResponse.json({ ok: true, data: [] })
 
     const userEmail = session.user.email || null
@@ -31,17 +31,20 @@ export async function GET() {
     // If admin, return all orders
     let rows
     if (isAdmin) {
-      rows = await prisma.platform_order.findMany({ orderBy: { created_at: 'desc' } })
+      rows = await prisma.platform_order.findMany({ where: { NOT: { status: 'PROPOSTA' as any } }, orderBy: { created_at: 'desc' } })
     } else {
       // If we couldn't resolve a vendedor id, return empty result (no access)
       if (!vendedorId) return NextResponse.json({ ok: true, data: [] })
 
       rows = await prisma.platform_order.findMany({
-        where: id_vendedor_externo
-          ? {
-              OR: [{ vendedor_id: vendedorId }, { id_vendedor_externo }],
-            }
-          : { vendedor_id: vendedorId },
+        where: {
+          NOT: { status: 'PROPOSTA' as any },
+          ...(id_vendedor_externo
+            ? {
+                OR: [{ vendedor_id: vendedorId }, { id_vendedor_externo }],
+              }
+            : { vendedor_id: vendedorId }),
+        },
         orderBy: { created_at: 'desc' },
       })
     }
@@ -53,17 +56,19 @@ export async function GET() {
       cnpj: r.cnpj,
       total: Number(r.total),
       status:
-        r.status === 'PENDENTE'
-          ? 'Pendente'
-          : r.status === 'PAGO'
-          ? 'Pago'
-          : r.status === 'CANCELADO'
-          ? 'Cancelado'
-          : r.status === 'FATURADO'
-          ? 'Faturado'
-          : r.status === 'EM_ABERTO'
-          ? 'Em aberto'
-          : 'Entregue',
+      r.status === 'PROPOSTA'
+        ? 'Proposta'
+        : r.status === 'PENDENTE'
+        ? 'Pendente'
+        : r.status === 'PAGO'
+        ? 'Pago'
+        : r.status === 'CANCELADO'
+        ? 'Cancelado'
+        : r.status === 'FATURADO'
+        ? 'Faturado'
+        : r.status === 'EM_ABERTO'
+        ? 'Em aberto'
+        : 'Entregue',
       id_vendedor_externo: r.id_vendedor_externo,
     }))
 
@@ -75,7 +80,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(options as any)
+    const session = (await getServerSession(options as any)) as any
     if (!session?.user?.id) return NextResponse.json({ ok: false, error: 'Não autenticado' }, { status: 401 })
     const userEmail = session.user.email || null
     // Resolve vendedor.id for this session user (prefer vendor email lookup). Fallback: numeric session.user.id if it seems to be a vendedor id.

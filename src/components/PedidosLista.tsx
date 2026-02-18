@@ -142,12 +142,13 @@
                          <td>{p.cnpj}</td>
                          <td>{p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                          <td>
-                           {p.status === 'Pago' && (<Badge bg="success">{p.status}</Badge>)}
-                           {p.status === 'Faturado' && (<Badge bg="success">{p.status}</Badge>)}
-                           {p.status === 'Em aberto' && (<Badge bg="warning">{p.status}</Badge>)}
-                           {p.status === 'Pendente' && (<Badge bg="warning" text="dark">{p.status}</Badge>)}
-                           {p.status === 'Entregue' && (<Badge bg="primary">{p.status}</Badge>)}
-                           {p.status === 'Cancelado' && (<Badge bg="danger">{p.status}</Badge>)}
+                          {p.status === 'Pago' && (<Badge bg="success">{p.status}</Badge>)}
+                          {p.status === 'Faturado' && (<Badge bg="success">{p.status}</Badge>)}
+                          {p.status === 'Em aberto' && (<Badge bg="warning">{p.status}</Badge>)}
+                          {p.status === 'Pendente' && (<Badge bg="warning" text="dark">{p.status}</Badge>)}
+                          {p.status === 'Entregue' && (<Badge bg="primary">{p.status}</Badge>)}
+                          {p.status === 'Cancelado' && (<Badge bg="danger">{p.status}</Badge>)}
+                          {p.status === 'Proposta' && (<Badge bg="info" text="dark">{p.status}</Badge>)}
                          </td>
                          <td>
                            <div className="d-flex gap-2">
