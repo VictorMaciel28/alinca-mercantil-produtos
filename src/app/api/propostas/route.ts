@@ -111,3 +111,41 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao salvar proposta' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const url = new URL(req.url)
+    const numero = Number(url.searchParams.get('id') || 0)
+    if (!numero) return NextResponse.json({ ok: false, error: 'Número obrigatório' }, { status: 400 })
+
+    const session = (await getServerSession(options as any)) as any
+    if (!session?.user?.id) return NextResponse.json({ ok: false, error: 'Não autenticado' }, { status: 401 })
+
+    // resolve vendedor/admin
+    const userEmail = session.user.email || null
+    let vendedorId: number | null = null
+    let isAdmin = false
+    if (userEmail) {
+      const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
+      vendedorId = vend?.id ?? null
+      if (vend?.id_vendedor_externo) {
+        const nivel = await prisma.vendedor_nivel_acesso.findUnique({ where: { id_vendedor_externo: vend.id_vendedor_externo } }).catch(() => null)
+        if (nivel?.nivel === 'ADMINISTRADOR') isAdmin = true
+      }
+    }
+    if (!vendedorId && session.user?.id) {
+      const maybe = Number(session.user.id)
+      vendedorId = Number.isNaN(maybe) ? null : maybe
+    }
+    if (!vendedorId && !isAdmin) return NextResponse.json({ ok: false, error: 'Usuário sem permissão' }, { status: 403 })
+
+    const row = await prisma.platform_order.findUnique({ where: { numero } })
+    if (!row || row.status !== ('PROPOSTA' as any)) return NextResponse.json({ ok: false, error: 'Proposta não encontrada' }, { status: 404 })
+    if (!isAdmin && row.vendedor_id !== vendedorId) return NextResponse.json({ ok: false, error: 'Proposta não encontrada' }, { status: 404 })
+
+    await prisma.platform_order.delete({ where: { numero } })
+    return NextResponse.json({ ok: true })
+  } catch (error: any) {
+    return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao deletar proposta' }, { status: 500 })
+  }
+}

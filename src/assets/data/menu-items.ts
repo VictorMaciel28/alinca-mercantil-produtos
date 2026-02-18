@@ -22,7 +22,7 @@ export const MENU_ITEMS: MenuItemType[] = [
         key: 'propostas',
         label: 'Propostas Comerciais',
         icon: 'ri:file-list-3-line',
-        url: '/propostas',
+        url: '/pedidos?entity=proposta',
         parentKey: 'vendas',
       },
     ],

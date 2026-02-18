@@ -5,14 +5,14 @@
  
  export default function PropostasComerciaisPage() {
    return (
-     <PedidosLista
-       entity="proposta"
-       title="Propostas Comerciais"
-       subName="Consulta e acompanhamento"
-       fetchFn={getPropostas}
-       newItemPath="/propostas/0"
-       itemRouteBase="/propostas"
-     />
+    <PedidosLista
+      entity="proposta"
+      title="Propostas Comerciais"
+      subName="Consulta e acompanhamento"
+      fetchFn={getPropostas}
+      newItemPath="/pedidos/0?entity=proposta"
+      itemRouteBase="/pedidos"
+    />
    );
  }
 

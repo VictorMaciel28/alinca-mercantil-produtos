@@ -66,7 +66,29 @@
    });
  
    const labelPlural = entity === 'proposta' ? 'Propostas' : 'Pedidos'
-   const newPath = newItemPath ?? `${itemRouteBase}/0`
+  const newPath = newItemPath ?? `${itemRouteBase}/0`
+
+  const computeItemUrl = (numero: number) => {
+    if (entity === 'proposta') return `/pedidos/${numero}?entity=proposta`
+    return `${itemRouteBase}/${numero}`
+  }
+
+  const handleDelete = async (e: React.MouseEvent, numero: number) => {
+    e.stopPropagation()
+    if (!confirm('Confirma exclusão?')) return
+    try {
+      if (entity === 'proposta') {
+        const res = await fetch(`/api/propostas?id=${numero}`, { method: 'DELETE' })
+        const json = await res.json()
+        if (!res.ok || !json?.ok) throw new Error(json?.error || 'Falha ao deletar proposta')
+        setItems((arr) => arr.filter((it) => it.numero !== numero))
+      } else {
+        // mock delete for pedidos (preserve existing behaviour)
+      }
+    } catch (err: any) {
+      alert('Erro ao excluir: ' + (err?.message || err))
+    }
+  }
  
    return (
      <>
@@ -134,8 +156,8 @@
                  </thead>
                  <tbody>
                    {itensFiltrados.length > 0 ? (
-                     itensFiltrados.map((p) => (
-                       <tr key={p.numero} style={{ cursor: 'pointer' }} onClick={() => router.push(`${itemRouteBase}/${p.numero}`)}>
+                    itensFiltrados.map((p) => (
+                      <tr key={p.numero} style={{ cursor: 'pointer' }} onClick={() => router.push(computeItemUrl(p.numero))}>
                          <td>{p.numero}</td>
                          <td>{new Date(p.data).toLocaleDateString('pt-BR')}</td>
                          <td>{p.cliente}</td>
@@ -152,20 +174,20 @@
                          </td>
                          <td>
                            <div className="d-flex gap-2">
-                             <Button
-                               variant="outline-secondary"
-                               size="sm"
-                               onClick={(e) => { e.stopPropagation(); router.push(`${itemRouteBase}/${p.numero}`) }}
-                               title="Editar"
-                             >
+                            <Button
+                              variant="outline-secondary"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); router.push(computeItemUrl(p.numero)) }}
+                              title="Editar"
+                            >
                                <IconifyIcon icon="ri:edit-line" />
                              </Button>
-                             <Button
-                               variant="outline-danger"
-                               size="sm"
-                               onClick={(e) => { e.stopPropagation(); /* excluir (mock) */ }}
-                               title="Excluir"
-                             >
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={(e) => handleDelete(e, p.numero)}
+                              title="Excluir"
+                            >
                                <IconifyIcon icon="ri:delete-bin-line" />
                              </Button>
                            </div>

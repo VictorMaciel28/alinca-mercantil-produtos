@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import PageTitle from '@/components/PageTitle'
 import { Card, Row, Col, Form, Button, Table, Modal, Spinner } from 'react-bootstrap'
 import { getPedidoByNumero, savePedido, Pedido, PedidoStatus, getNextPedidoNumero } from '@/services/pedidos'
+import { createProposta } from '@/services/propostas'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
 export default function PedidoFormPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const entityParam = searchParams?.get('entity') ?? ''
   const idParam = useMemo(() => Number(params?.id ?? 0), [params])
   const isNew = idParam === 0
 
@@ -296,7 +299,20 @@ export default function PedidoFormPage() {
 
       const tinyParcelas: any[] | undefined = undefined
 
-      // Apenas salvar localmente na plataforma
+      // Determine if this submission is a proposta via search param
+      if (entityParam === 'proposta') {
+        // create proposal
+        const numero = await createProposta({
+          ...form,
+          total: totalComDesconto,
+          id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
+          client_vendor_externo: selectedClient?.id_vendedor_externo || null,
+        })
+        router.push('/propostas')
+        return
+      }
+
+      // Apenas salvar localmente na plataforma (pedido)
       const saved = await savePedido({
         ...form,
         total: totalComDesconto,
