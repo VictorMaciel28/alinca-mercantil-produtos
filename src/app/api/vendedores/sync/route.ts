@@ -46,38 +46,64 @@ async function fetchTinyVendedoresPage(pagina: number) {
 
 export async function POST() {
   try {
+    // First: collect all vendedores from Tiny (all pages) into an array
     let pagina = 1
     let numero_paginas = 1
-    let imported = 0
-
-    await prisma.vendedor.deleteMany()
-
+    const tinyAll: { vendedor: TinyVendedor }[] = []
     while (pagina <= numero_paginas) {
       const retorno = await fetchTinyVendedoresPage(pagina)
       numero_paginas = retorno?.numero_paginas ?? 1
-
       const vendedores: { vendedor: TinyVendedor }[] = retorno?.vendedores ?? []
-      const batch: any[] = []
       for (const v of vendedores) {
         const vd = v?.vendedor || {}
         if (!vd?.id || !vd?.nome) continue
-
-        batch.push({
-          id_vendedor_externo: String(vd.id),
-          nome: vd.nome,
-          email: vd.email ?? null,
-        })
+        tinyAll.push({ vendedor: vd })
       }
-
-      if (batch.length > 0) {
-        await prisma.vendedor.createMany({ data: batch })
-        imported += batch.length
-      }
-
       pagina += 1
     }
 
-    return NextResponse.json({ ok: true, imported })
+    // Build maps and lists for efficient DB operations
+    const externals = Array.from(new Set(tinyAll.map((t) => String(t.vendedor.id))))
+    const existingVendors = externals.length > 0 ? await prisma.vendedor.findMany({ where: { id_vendedor_externo: { in: externals } } }) : []
+    const existingByExternal = new Map(existingVendors.map((e) => [e.id_vendedor_externo, e]))
+
+    const toCreate: any[] = []
+    const toUpdate: { id: number; data: any }[] = []
+
+    for (const t of tinyAll) {
+      const vd = t.vendedor
+      const externo = String(vd.id)
+      const data = {
+        id_vendedor_externo: externo,
+        nome: vd.nome,
+        email: vd.email ?? null,
+      }
+      const existing = existingByExternal.get(externo)
+      if (existing) {
+        toUpdate.push({ id: existing.id, data })
+      } else {
+        toCreate.push(data)
+      }
+    }
+
+    // Perform DB writes: createMany for new, parallel updates for existing
+    let created = 0
+    let updated = 0
+    if (toCreate.length > 0) {
+      // createMany ignores duplicates; safe to use
+      await prisma.vendedor.createMany({ data: toCreate })
+      created = toCreate.length
+    }
+
+    if (toUpdate.length > 0) {
+      // run updates in parallel (transaction could be used if desired)
+      await Promise.all(
+        toUpdate.map((u) => prisma.vendedor.update({ where: { id: u.id }, data: u.data }))
+      )
+      updated = toUpdate.length
+    }
+
+    return NextResponse.json({ ok: true, created, updated })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao atualizar vendedores' }, { status: 500 })
   }

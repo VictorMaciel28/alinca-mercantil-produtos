@@ -5,6 +5,16 @@ import { options } from '@/app/api/auth/[...nextauth]/options'
 
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession(options as any)
+    const userEmail = session?.user?.email || null
+    let vendedorId: number | null = null
+    let vendedorExterno: string | null = null
+    if (userEmail) {
+      const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
+      vendedorId = vend?.id ?? null
+      vendedorExterno = vend?.id_vendedor_externo ?? null
+    }
+
     const { searchParams } = new URL(req.url)
     const roleParam = (searchParams.get('role') || '').toString().trim().toUpperCase()
     const vendorExterno = (searchParams.get('vendor_externo') || '').toString().trim()
@@ -40,6 +50,14 @@ export async function GET(req: Request) {
       where.created_at = {}
       if (startStr) where.created_at.gte = new Date(startStr + 'T00:00:00.000Z')
       if (endStr) where.created_at.lte = new Date(endStr + 'T23:59:59.999Z')
+    }
+
+    // If vendor filter not provided, but we have a logged vendor, restrict results to that vendor (either as beneficiary or as order owner)
+    if (!vendorExterno && vendedorExterno) {
+      // include commissions where beneficiary_externo is this vendor OR the related order.vendedor_id equals this vendor
+      where.OR = where.OR || []
+      where.OR.push({ beneficiary_externo: vendedorExterno })
+      where.OR.push({ order: { vendedor_id: vendedorId } })
     }
 
     const rows = await prisma.platform_commission.findMany({

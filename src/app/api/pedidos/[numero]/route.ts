@@ -8,12 +8,22 @@ export async function GET(_: Request, { params }: { params: { numero: string } }
     const session = await getServerSession(options as any)
     if (!session?.user?.id) return NextResponse.json({ ok: false, error: 'Não autenticado' }, { status: 401 })
 
-    const userId = BigInt(session.user.id)
+    // Resolve vendedor id for this session
+    const userEmail = session.user.email || null
+    let vendedorId: number | null = null
+    if (userEmail) {
+      const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
+      vendedorId = vend?.id ?? null
+    }
+    if (!vendedorId && session.user?.id) {
+      const maybe = Number(session.user.id)
+      vendedorId = Number.isNaN(maybe) ? null : maybe
+    }
     const numero = Number(params?.numero || 0)
     if (!numero) return NextResponse.json({ ok: false, error: 'Número inválido' }, { status: 400 })
 
     const row = await prisma.platform_order.findUnique({ where: { numero } })
-    if (!row || row.user_id !== userId) {
+    if (!row || row.vendedor_id !== vendedorId) {
       return NextResponse.json({ ok: false, error: 'Pedido não encontrado' }, { status: 404 })
     }
 

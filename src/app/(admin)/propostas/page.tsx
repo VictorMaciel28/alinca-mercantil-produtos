@@ -1,19 +1,19 @@
-"use client";
-
-import PageTitle from '@/components/PageTitle'
-import { Card } from 'react-bootstrap'
-
-export default function PropostasComerciaisPage() {
-  return (
-    <>
-      <PageTitle title="Propostas Comerciais" subName="Em breve" />
-      <Card className="border-0 shadow-sm">
-        <Card.Body>
-          Esta seção exibirá propostas comerciais. Conteúdo placeholder por enquanto.
-        </Card.Body>
-      </Card>
-    </>
-  );
-}
+ "use client";
+ 
+ import PedidosLista from '@/components/PedidosLista'
+ import { getPropostas } from '@/services/propostas'
+ 
+ export default function PropostasComerciaisPage() {
+   return (
+     <PedidosLista
+       entity="proposta"
+       title="Propostas Comerciais"
+       subName="Consulta e acompanhamento"
+       fetchFn={getPropostas}
+       newItemPath="/propostas/0"
+       itemRouteBase="/propostas"
+     />
+   );
+ }
 
 

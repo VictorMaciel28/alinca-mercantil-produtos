@@ -16,6 +16,7 @@ model vendedor {
   tiny_id   Int?
   id_vendedor_externo String? @db.VarChar(100)
   clientes  cliente[]
+  platform_orders platform_order[]
 
   @@index([tiny_id], map: "idx_vendedor_tiny_id")
   @@index([id_vendedor_externo], map: "idx_vendedor_external_id")
@@ -161,8 +162,8 @@ model platform_order {
   status               PedidoStatus
   id_vendedor_externo  String?       @db.VarChar(100)
   client_vendor_externo String?      @db.VarChar(100)
-  user_id              BigInt        @db.UnsignedBigInt
-  user                 wp_users      @relation(name: "UserOrders", fields: [user_id], references: [ID], onDelete: Restrict)
+  vendedor_id          Int? 
+  vendedor             vendedor?     @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
   created_at           DateTime      @default(now()) @db.DateTime(0)
   updated_at           DateTime      @updatedAt @db.DateTime(0)
   commissions          platform_commission[]
@@ -220,7 +221,7 @@ model wp_users {
   user_status         Int      @default(0)
   display_name        String   @default("") @db.VarChar(250)
   access_level        Int      @default(1)
-  platform_orders     platform_order[] @relation("UserOrders")
+  // platform_orders relation removed: orders now reference `vendedor` instead of WP users
 
   @@index([user_email], map: "user_email")
   @@index([user_login], map: "user_login_key")

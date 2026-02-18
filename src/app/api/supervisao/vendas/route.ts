@@ -27,8 +27,18 @@ export async function GET(req: Request) {
     const startStr = (searchParams.get('start') || '').toString().slice(0, 10)
     const endStr = (searchParams.get('end') || '').toString().slice(0, 10)
 
-    const where: any = {
-      id_vendedor_externo: vendFilter ? vendFilter : { in: externos },
+    const where: any = {}
+    if (vendFilter) {
+      // allow filtering by vendedor_externo or numeric vendedor id
+      const maybeNum = Number(vendFilter)
+      if (!Number.isNaN(maybeNum)) {
+        where.vendedor_id = maybeNum
+      } else {
+        where.id_vendedor_externo = vendFilter
+      }
+    } else {
+      // default to externals list
+      where.OR = [{ id_vendedor_externo: { in: externos } }, { vendedor_id: { in: await prisma.vendedor.findMany({ where: { id_vendedor_externo: { in: externos } }, select: { id: true } }).then(rs => rs.map(r => r.id)) } }]
     }
     if (startStr || endStr) {
       where.data = {}
