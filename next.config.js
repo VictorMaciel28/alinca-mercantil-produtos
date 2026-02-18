@@ -5,9 +5,6 @@ module.exports = {
     // ✅ Faz o Next buildar mesmo com erros de tipagem (TS2339, TS7006, etc.)
     ignoreBuildErrors: true,
   },
-  experimental: {
-    incrementalCacheHandlerPath: './cache-handler.js',
-  },
   eslint: {
     // ✅ Evita o ESLint travar o build no CI
     ignoreDuringBuilds: true,
@@ -19,7 +16,7 @@ module.exports = {
     };
     // Limit webpack parallelism/workers to avoid spawning too many processes
     // (e.g. on constrained shared machines). Adjust NUMBER below as needed.
-    const NUMBER = 40;
+    const NUMBER = 80;
     try {
       // global parallelism (Webpack 5)
       config.parallelism = NUMBER;
