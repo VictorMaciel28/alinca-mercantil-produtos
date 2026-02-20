@@ -70,10 +70,10 @@ export default function LandingPage() {
         <Container>
           <Row className="align-items-center">
             <Col md={6} className="d-flex align-items-center gap-2">
-              <img src="/favicon.ico" alt="Alinça Mercantil" className="landing-brand-icon" />
+              <img src="/favicon.ico" alt="SAMA" className="landing-brand-icon" />
               <div>
                 <div className="landing-brand">Alinça Mercantil</div>
-                <div className="landing-tagline">Sistema de gestão comercial</div>
+                <div className="landing-tagline"><b style={{ color: '#4f46e5' }}>S</b>istema <b style={{ color: '#4f46e5' }}>A</b>liança <b style={{ color: '#4f46e5' }}>M</b>ercantil <b style={{ color: '#4f46e5' }}>A</b>tacadista</div>
               </div>
             </Col>
             <Col md={6} className="text-md-end mt-3 mt-md-0">

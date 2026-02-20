@@ -1,10 +1,11 @@
  "use client";
  
  import { useEffect, useState } from "react";
- import { Card, Form, Table, Badge, Row, Col, Button } from "react-bootstrap";
+import { Card, Form, Table, Badge, Row, Col, Button, Modal, Spinner } from "react-bootstrap";
  import PageTitle from '@/components/PageTitle'
  import { Pedido } from '@/services/pedidos'
- import IconifyIcon from '@/components/wrappers/IconifyIcon'
+import IconifyIcon from '@/components/wrappers/IconifyIcon'
+import { savePedido } from '@/services/pedidos'
  import { useRouter } from 'next/navigation'
  
  interface PedidosListaProps {
@@ -87,6 +88,35 @@
       }
     } catch (err: any) {
       alert('Erro ao excluir: ' + (err?.message || err))
+    }
+  }
+
+  // Evolve proposal -> pedido
+  const [showEvolveModal, setShowEvolveModal] = useState(false)
+  const [evolveItem, setEvolveItem] = useState<Pedido | null>(null)
+  const [isEvolving, setIsEvolving] = useState(false)
+  const [evolveError, setEvolveError] = useState<string | null>(null)
+
+  const openEvolve = (e: React.MouseEvent, item: Pedido) => {
+    e.stopPropagation()
+    setEvolveItem(item)
+    setEvolveError(null)
+    setShowEvolveModal(true)
+  }
+
+  const confirmEvolve = async () => {
+    if (!evolveItem) return
+    setIsEvolving(true)
+    setEvolveError(null)
+    try {
+      await savePedido({ ...evolveItem, status: 'Pendente' })
+      // remove from list (it's no longer a proposal)
+      setItems((arr) => arr.filter((it) => it.numero !== evolveItem.numero))
+      setShowEvolveModal(false)
+    } catch (err: any) {
+      setEvolveError(err?.message || 'Falha ao evoluir proposta')
+    } finally {
+      setIsEvolving(false)
     }
   }
  
@@ -182,6 +212,16 @@
                             >
                                <IconifyIcon icon="ri:edit-line" />
                              </Button>
+                           {entity === 'proposta' && (
+                             <Button
+                               variant="outline-success"
+                               size="sm"
+                               onClick={(e) => openEvolve(e, p)}
+                               title="Evoluir para pedido"
+                             >
+                               <IconifyIcon icon="ri:money-dollar-circle-line" />
+                             </Button>
+                           )}
                             <Button
                               variant="outline-danger"
                               size="sm"
@@ -205,6 +245,25 @@
            </Card.Body>
          </Card>
        </section>
+
+      <Modal show={showEvolveModal} onHide={() => setShowEvolveModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Evoluir proposta</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Deseja evoluir proposta comercial para pedido?</p>
+          {evolveItem && (
+            <div className="small text-muted">N° {evolveItem.numero} — {evolveItem.cliente}</div>
+          )}
+          {evolveError && <div className="text-danger mt-2">{evolveError}</div>}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowEvolveModal(false)}>Cancelar</Button>
+          <Button variant="primary" onClick={confirmEvolve} disabled={isEvolving}>
+            {isEvolving ? (<><Spinner animation="border" size="sm" className="me-2" />Processando</>) : 'Confirmar'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
      </>
   );
 }

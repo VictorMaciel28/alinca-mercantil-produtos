@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import PageTitle from '@/components/PageTitle'
-import { Card, Row, Col, Form, Button, Table, Modal, Spinner } from 'react-bootstrap'
+import { Card, Row, Col, Form, Button, Table, Modal, Spinner, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { getPedidoByNumero, savePedido, Pedido, PedidoStatus, getNextPedidoNumero } from '@/services/pedidos'
 import { createProposta } from '@/services/propostas'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
@@ -22,7 +22,7 @@ export default function PedidoFormPage() {
     cliente: '',
     cnpj: '',
     total: 0,
-    status: 'Pendente',
+    status: entityParam === 'proposta' ? 'Proposta' : 'Pendente',
   })
 
   const [formaRecebimento, setFormaRecebimento] = useState('Boleto')
@@ -30,9 +30,7 @@ export default function PedidoFormPage() {
   const [descontoPercent, setDescontoPercent] = useState<number>(0)
 
   type ItemPedido = { id: number; nome: string; sku?: string; quantidade: number; unidade: string; preco: number; estoque?: number; produtoId?: number; imagemUrl?: string }
-  const [itens, setItens] = useState<ItemPedido[]>([
-    { id: 1, nome: '', quantidade: 1, unidade: 'PC', preco: 0 },
-  ])
+  const [itens, setItens] = useState<ItemPedido[]>([])
 
   const [showPreview, setShowPreview] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -49,6 +47,13 @@ export default function PedidoFormPage() {
   const [catalogDetail, setCatalogDetail] = useState<{ nome?: string; codigo?: string; preco?: number; unidade?: string; imagem?: string | null; descricao?: string | null; estoque?: number | null } | null>(null)
   const [catalogDetailLoading, setCatalogDetailLoading] = useState(false)
   const [catalogDetailError, setCatalogDetailError] = useState<string | null>(null)
+  const [showCatalogListModal, setShowCatalogListModal] = useState(false)
+  const [showQtyModal, setShowQtyModal] = useState(false)
+  const [qtyModalProduct, setQtyModalProduct] = useState<CatalogItem | null>(null)
+  const [qtyModalValue, setQtyModalValue] = useState<number>(1)
+  const [qtyModalStock, setQtyModalStock] = useState<number | null>(null)
+  const [qtyModalLoading, setQtyModalLoading] = useState(false)
+  const [qtyModalError, setQtyModalError] = useState<string | null>(null)
 
   // Histórico de produtos
   type HistoryItem = {
@@ -166,28 +171,47 @@ export default function PedidoFormPage() {
   }, [catalogQuery])
 
   const addFromCatalog = (p: CatalogItem) => {
-    setItens((arr) => {
-      // Se já existe por SKU, incrementa quantidade
-      const idx = arr.findIndex((it) => (it.sku || '').toLowerCase() === (p.codigo || '').toLowerCase())
-      if (idx >= 0) {
-        const next = [...arr]
-        next[idx] = { ...next[idx], quantidade: next[idx].quantidade + 1 }
-        return next
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/produtos/${p.id}/estoque`)
+        const est = await res.json().catch(() => ({ totalEstoque: null }))
+        const stock = est?.totalEstoque != null ? Number(est.totalEstoque) : null
+        const currentQty = getQtdInOrderBySku(p.codigo)
+        if (stock != null && currentQty + 1 > stock) {
+          // open qty modal with error
+          setQtyModalProduct(p)
+          setQtyModalValue(currentQty + 1)
+          setQtyModalStock(stock)
+          setQtyModalError(`Estoque não disponível, estoque atual: ${stock}`)
+          setShowQtyModal(true)
+          return
+        }
+        // proceed to add
+        setItens((arr) => {
+          const idx = arr.findIndex((it) => (it.sku || '').toLowerCase() === (p.codigo || '').toLowerCase())
+          if (idx >= 0) {
+            const next = [...arr]
+            next[idx] = { ...next[idx], quantidade: next[idx].quantidade + 1 }
+            return next
+          }
+          const nextId = arr.reduce((m, it) => Math.max(m, it.id), 0) + 1
+          return [
+            ...arr,
+            {
+              id: nextId,
+              nome: p.nome,
+              sku: p.codigo,
+              quantidade: 1,
+              unidade: 'PC',
+              preco: Number(p.preco || 0),
+              imagemUrl: p.imagem || undefined,
+            },
+          ]
+        })
+      } catch (e) {
+        // ignore errors here to avoid disrupting catalog state
       }
-      const nextId = arr.reduce((m, it) => Math.max(m, it.id), 0) + 1
-      return [
-        ...arr,
-        {
-          id: nextId,
-          nome: p.nome,
-          sku: p.codigo,
-          quantidade: 1,
-          unidade: 'PC',
-          preco: Number(p.preco || 0),
-          imagemUrl: p.imagem || undefined,
-        },
-      ]
-    })
+    })()
   }
 
   const removeFromCatalog = (p: CatalogItem) => {
@@ -234,6 +258,29 @@ export default function PedidoFormPage() {
         setCatalogDetailLoading(false)
       }
     })()
+  }
+
+  const openQtyEditor = async (p: CatalogItem, initialValue?: number) => {
+    setQtyModalError(null)
+    setQtyModalProduct(p)
+    setQtyModalLoading(true)
+    try {
+      const res = await fetch(`/api/produtos/${p.id}/estoque`)
+      const est = await res.json().catch(() => ({ totalEstoque: null }))
+      const stock = est?.totalEstoque != null ? Number(est.totalEstoque) : null
+      setQtyModalStock(stock)
+      const currentQty = getQtdInOrderBySku(p.codigo)
+      setQtyModalValue(typeof initialValue === 'number' ? initialValue : currentQty || 1)
+      if (stock != null && (typeof initialValue === 'number' ? initialValue : currentQty || 1) > stock) {
+        setQtyModalError(`Estoque não disponível, estoque atual: ${stock}`)
+      }
+      setShowQtyModal(true)
+    } catch (e: any) {
+      setQtyModalError('Falha ao verificar estoque')
+      setShowQtyModal(true)
+    } finally {
+      setQtyModalLoading(false)
+    }
   }
 
   const getQtdInOrderBySku = (sku?: string) => {
@@ -289,6 +336,12 @@ export default function PedidoFormPage() {
     setIsSubmitting(true)
 
     try {
+      // Block submit if parcel validation fails
+      if (pagamentoParceladoErro) {
+        setSubmitError(pagamentoParceladoErro)
+        setIsSubmitting(false)
+        return
+      }
       // Envio para Tiny desabilitado temporariamente: salvar apenas na plataforma
       const cpfCnpjDigits = onlyDigits(form.cnpj)
       const tipoPessoa = cpfCnpjDigits.length === 11 ? 'F' : (cpfCnpjDigits.length === 14 ? 'J' : '')
@@ -301,13 +354,14 @@ export default function PedidoFormPage() {
 
       // Determine if this submission is a proposta via search param
       if (entityParam === 'proposta') {
-        // create proposal
+        // create proposal (ensure status is 'Proposta')
         const numero = await createProposta({
           ...form,
+          status: 'Proposta',
           total: totalComDesconto,
           id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
           client_vendor_externo: selectedClient?.id_vendedor_externo || null,
-        })
+        } as any)
         router.push('/propostas')
         return
       }
@@ -349,11 +403,61 @@ export default function PedidoFormPage() {
   }, [subtotal, descontoPercent, descontoHabilitado])
 
   const condicoesBoleto = [
-    '7 dias',
-    '28, 42 e 56',
-    '28, 35, 42, 49 e 56',
-    '21, 28, 35',
-    '21, 28, 45, 42, 49, 56, 63',
+    '14 D',
+    '14/21/28/35/42/49/56/63/70/77/84/91D',
+    '14/21/28/35/42/49/56/63/70/77D',
+    '14/21/28/35/42/49/56/63/70D',
+    '14/21/28/35/42/49/56/63D',
+    '14/21/28/35/42/49/56D',
+    '14/21/28/35/42/49D',
+    '14/21/28/35/42D',
+    '14/21/28/35D',
+    '14/21/28D',
+    '14/21D',
+
+    '21/28/35/42/49D',
+    '21/28/35/42D',
+    '21/28/35D',
+    '21/28D',
+    '21D',
+    '28/35/42/49/56/63/70',
+    '28/35/42/49/56/63/70/77/84D',
+    '28/35/42/49/56/63/70/77D',
+    '28/35/42/49/56/63D',
+    '28/35/42/49/56D',
+    '28/35/42/49D',
+    '28/35/42D',
+    '28/35D',
+    '28/42D',
+
+    '28/49D',
+    '28/56D',
+    '28D',
+    '30/40/50/60/70/80/90/100/110/120D',
+    '30/40/50/60/70/80/90/100D',
+    '30/40/50/60/70/80D',
+    '30/40/50/60/70D',
+    '30/40/50/60D',
+    '30/40/50D',
+    '30/40D',
+    '30/45/60/75/90/105/120 D',
+    '30/45/60/75/90D',
+    '30/45/60/75D',
+
+    '30/45/60D',
+    '30/60/80D',
+    '30/60/90/120D',
+    '30/60/90D',
+    '30/70/100D',
+    '30/70D',
+    '30/75/120 D',
+    '30D',
+    '40/50/60/70/80/90/100/110/120/130/140/150D',
+    '40/50/60/70/80/90/100D',
+    '40/70/100D',
+    '40/90/130/150D',
+    '45/60/75/90/105/120/135D',
+    '45/60/75D',
   ]
 
   const condicoesPagamentoOptions = useMemo(() => {
@@ -380,6 +484,17 @@ export default function PedidoFormPage() {
       return { numero: idx + 1, data: d, valor: valorParcela }
     })
   }, [diasParcelas, totalComDesconto, form.data, formaRecebimento])
+
+  // Validação: valor mínimo da parcela para Boleto
+  const pagamentoParceladoErro = useMemo(() => {
+    if (formaRecebimento !== 'Boleto') return ''
+    if (!parcelas || parcelas.length === 0) return ''
+    const valorParcela = parcelas[0]?.valor ?? 0
+    if (valorParcela < 400) {
+      return 'Conforme as políticas comerciais atuais, o valor da parcela deve superar 400 reais.'
+    }
+    return ''
+  }, [formaRecebimento, parcelas])
 
   const onNomeChange = (itemId: number, value: string) => {
     setItens((arr) => arr.map((it) => it.id === itemId ? { ...it, nome: value } : it))
@@ -470,9 +585,16 @@ export default function PedidoFormPage() {
     return 'danger'
   }
 
+  const headerTitle = (() => {
+    if (entityParam === 'proposta') {
+      return isNew ? `Proposta de venda` : `Proposta de venda ${form.numero}`
+    }
+    return isNew ? `Pedido de venda ${getNextPedidoNumero()}` : `Pedido de venda ${form.numero}`
+  })()
+
   return (
     <>
-      <PageTitle title={isNew ? `Pedido de venda ${getNextPedidoNumero()}` : `Pedido de venda ${form.numero}`} subName={isNew ? 'Criação' : 'Edição'} />
+      <PageTitle title={headerTitle} subName={isNew ? 'Criação' : 'Edição'} />
 
       {/* Sessão 1 - Cliente e Vendedor */}
       <Card className="border-0 shadow-sm mb-3">
@@ -534,16 +656,15 @@ export default function PedidoFormPage() {
           <div className="fw-semibold">Produtos</div>
         </Card.Header>
         <Card.Body>
-          {/* Catálogo com rolagem e busca */}
           <div className="mb-3">
-            <Form.Label className="fw-semibold">Buscar no catálogo (mostrando 100 itens)</Form.Label>
+            <Form.Label className="fw-semibold">Busca de produtos </Form.Label>
             <Form.Control
               type="text"
-              placeholder="Digite ao menos 3 caracteres para filtrar"
+              placeholder="Digite código SKU ou nome do produto"
               value={catalogQuery}
               onChange={(e) => setCatalogQuery(e.target.value)}
             />
-            <div className="mt-2 border rounded" style={{ maxHeight: 320, overflowY: 'auto' }}>
+            <div className="mt-2 border rounded d-none d-md-block" style={{ maxHeight: 320, overflowY: 'auto' }}>
               {catalogLoading ? (
                 <div className="p-2 small text-muted">Carregando produtos...</div>
               ) : catalog.length === 0 ? (
@@ -562,7 +683,13 @@ export default function PedidoFormPage() {
                       <div className="d-flex gap-1">
                         {/* Quantidade atual no pedido para este SKU */}
                         {getQtdInOrderBySku(p.codigo) > 0 && (
-                          <span className="badge bg-secondary align-self-center me-1" title="Quantidade no pedido">
+                          <span
+                            role="button"
+                            onClick={() => openQtyEditor(p)}
+                            className="badge bg-secondary align-self-center me-1"
+                            title="Quantidade no pedido (clique para editar)"
+                            style={{ cursor: 'pointer' }}
+                          >
                             {getQtdInOrderBySku(p.codigo)}
                           </span>
                         )}
@@ -581,213 +708,10 @@ export default function PedidoFormPage() {
                 </div>
               )}
             </div>
-          </div>
+            <div className="d-flex justify-content-end mt-2">
+              <Button size="sm" variant="outline-secondary" onClick={() => setShowCatalogListModal(true)}>Ver lista</Button>
+            </div>
 
-          {/* Desktop (md+) */}
-          <div className="table-responsive d-none d-md-block" style={{ overflow: 'visible' }}>
-            <Table hover className="mb-0">
-              <thead>
-                <tr>
-                  <th style={{ width: 70 }}>N°</th>
-                  <th style={{ minWidth: 360 }}>Nome</th>
-                  <th style={{ width: 120 }}>SKU</th>
-                  <th style={{ width: 100 }}>Qtde</th>
-                  <th style={{ width: 90 }}>Unidade</th>
-                  <th style={{ width: 100 }}>Estoque</th>
-                  <th style={{ width: 130 }}>Preço un</th>
-                  <th style={{ width: 150 }}>Total</th>
-                  <th style={{ width: 120 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {itens.map((item, idx) => {
-                  const totalItem = item.quantidade * item.preco
-                  return (
-                    <tr key={item.id}>
-                      <td>{idx + 1}</td>
-                      <td>
-                        <div className="position-relative">
-                          <div className="d-flex gap-2 align-items-center">
-                            {item.imagemUrl ? (
-                              <img
-                                src={item.imagemUrl}
-                                alt="Produto"
-                                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }}
-                                onClick={() => { setPreviewUrl(item.imagemUrl || null); setShowPreview(true) }}
-                                className="flex-shrink-0"
-                              />
-                            ) : null}
-                            <Form.Control
-                              type="text"
-                              placeholder="Pesquise por descrição ou código SKU"
-                              value={item.nome}
-                              onChange={(e) => onNomeChange(item.id, e.target.value)}
-                              className="flex-grow-1"
-                            />
-                            {/* <Button
-                              variant="outline-secondary"
-                              size="sm"
-                              onClick={() => setShowSearch(true)}
-                              title="Buscar produto"
-                            >
-                              <IconifyIcon icon="ri:search-line" />
-                            </Button> */}
-                          </div>
-                          {showSuggestForItem[item.id] && (suggestionsByItem[item.id]?.length ?? 0) > 0 && (
-                            <div className="border rounded bg-white shadow position-absolute w-100 mt-1" style={{ zIndex: 2000, maxHeight: 300, overflowY: 'auto' }}>
-                              {suggestionsByItem[item.id].map((opt) => (
-                                <div
-                                  key={opt.id}
-                                  className="px-2 py-1 hover-bg"
-                                  style={{ cursor: 'pointer' }}
-                                  onClick={() => selectProduto(item.id, opt.id)}
-                                >
-                                  <div className="fw-semibold small">{opt.nome}</div>
-                                  <div className="text-muted small">SKU: {opt.codigo || '-'}</div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <Form.Control type="text" value={item.sku || ''} placeholder="SKU" disabled />
-                      </td>
-                      <td>
-                        <Form.Control
-                          type="number"
-                          min={1}
-                          value={item.quantidade}
-                          onChange={(e) => {
-                            const v = Math.max(1, Number(e.target.value))
-                            setItens((arr) => arr.map((it) => it.id === item.id ? { ...it, quantidade: v } : it))
-                          }}
-                        />
-                      </td>
-                      <td>
-                        <Form.Control type="text" value={item.unidade} disabled />
-                      </td>
-                      <td>
-                        <Form.Control type="text" value={item.estoque ?? 0} disabled />
-                      </td>
-                      <td>
-                        <Form.Control type="text" value={item.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disabled />
-                      </td>
-                      <td>
-                        <Form.Control type="text" value={totalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disabled />
-                      </td>
-                      <td className="text-center">
-                        <div className="d-flex justify-content-center gap-2">
-                          <Button variant="outline-danger" size="sm" onClick={() => removeItem(item.id)} title="Remover">
-                            <IconifyIcon icon="ri:delete-bin-line" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </Table>
-          </div>
-
-          {/* Mobile (sm) - Itens empilhados */}
-          <div className="d-block d-md-none">
-            {itens.map((item, idx) => {
-              const totalItem = item.quantidade * item.preco
-              return (
-                <div key={item.id} className="border rounded p-2 mb-2">
-                  <div className="small text-muted">N° {idx + 1}</div>
-                  <Form.Group className="mt-1">
-                    <Form.Label className="mb-1">Nome</Form.Label>
-                    <div className="d-flex gap-2 align-items-center">
-                      {item.imagemUrl ? (
-                        <img
-                          src={item.imagemUrl}
-                          alt="Produto"
-                          style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }}
-                          onClick={() => { setPreviewUrl(item.imagemUrl || null); setShowPreview(true) }}
-                          className="flex-shrink-0"
-                        />
-                      ) : null}
-                      <Form.Control
-                        type="text"
-                        placeholder="Pesquise por descrição ou código SKU"
-                        value={item.nome}
-                        onChange={(e) => onNomeChange(item.id, e.target.value)}
-                        className="flex-grow-1"
-                      />
-                      {/* <Button
-                        variant="outline-secondary"
-                        size="sm"
-                        onClick={() => setShowSearch(true)}
-                        title="Buscar produto"
-                      >
-                        <IconifyIcon icon="ri:search-line" />
-                      </Button> */}
-                    </div>
-                    {showSuggestForItem[item.id] && (suggestionsByItem[item.id]?.length ?? 0) > 0 && (
-                      <div className="border rounded bg-white shadow mt-1" style={{ zIndex: 10 }}>
-                        {suggestionsByItem[item.id].map((opt) => (
-                          <div
-                            key={opt.id}
-                            className="px-2 py-1 hover-bg"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => selectProduto(item.id, opt.id)}
-                          >
-                            <div className="fw-semibold small">{opt.nome}</div>
-                            <div className="text-muted small">SKU: {opt.codigo || '-'}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Form.Group>
-                  <Row className="g-2 mt-1">
-                    <Col xs={6}>
-                      <Form.Label className="mb-1">SKU</Form.Label>
-                      <Form.Control type="text" value={item.sku || ''} disabled />
-                    </Col>
-                    <Col xs={6}>
-                      <Form.Label className="mb-1">Estoque</Form.Label>
-                      <Form.Control type="text" value={item.estoque ?? 0} disabled />
-                    </Col>
-                  </Row>
-                  <Row className="g-2 mt-1">
-                    <Col xs={6}>
-                      <Form.Label className="mb-1">Qtde</Form.Label>
-                      <Form.Control
-                        type="number"
-                        min={1}
-                        value={item.quantidade}
-                        onChange={(e) => {
-                          const v = Math.max(1, Number(e.target.value))
-                          setItens((arr) => arr.map((it) => it.id === item.id ? { ...it, quantidade: v } : it))
-                        }}
-                      />
-                    </Col>
-                    <Col xs={6}>
-                      <Form.Label className="mb-1">Unidade</Form.Label>
-                      <Form.Control type="text" value={item.unidade} disabled />
-                    </Col>
-                    <Col xs={6}>
-                      <Form.Label className="mb-1">Preço un</Form.Label>
-                      <Form.Control type="text" value={item.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disabled />
-                    </Col>
-                    <Col xs={6}>
-                      <Form.Label className="mb-1">Total</Form.Label>
-                      <Form.Control type="text" value={totalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disabled />
-                    </Col>
-                  </Row>
-                  {/* <div className="d-flex justify-content-end gap-2 mt-2">
-                    <Button variant="outline-secondary" size="sm" onClick={() => { setPreviewUrl(item.imagemUrl || null); setShowPreview(true) }} title="Ver imagem">
-                      <IconifyIcon icon="ri:image-line" />
-                    </Button>
-                    <Button variant="outline-danger" size="sm" onClick={() => removeItem(item.id)} title="Remover">
-                      <IconifyIcon icon="ri:delete-bin-line" />
-                    </Button>
-                  </div> */}
-                </div>
-              )
-            })}
           </div>
 
           <div className="d-flex justify-content-start mt-3">
@@ -797,7 +721,7 @@ export default function PedidoFormPage() {
               style={{ textDecoration: 'underline' }}
               onClick={openHistory}
             >
-              Histórico de produtos
+              Histórico de produtos do cliente
             </Button>
           </div>
         </Card.Body>
@@ -883,12 +807,22 @@ export default function PedidoFormPage() {
                     </tbody>
                   </Table>
                 </div>
+                {pagamentoParceladoErro && (
+                  <div className="text-danger mt-2">
+                    Conforme as políticas comerciais atuais, <strong>o valor da parcela deve superar 400 reais</strong>.
+                  </div>
+                )}
               </div>
             )}
 
             <div className="d-flex gap-2 mt-4">
-              <Button type="submit">Enviar Pedido</Button>
-              <Button variant="secondary" onClick={() => router.push('/pedidos')}>Cancelar</Button>
+              <Button
+                type="submit"
+                disabled={!!pagamentoParceladoErro || isSubmitting}
+              >
+                {entityParam === 'proposta' ? 'Enviar Proposta' : 'Enviar Pedido'}
+              </Button>
+              <Button variant="secondary" onClick={() => router.push(entityParam === 'proposta' ? '/propostas' : '/pedidos')}>Cancelar</Button>
             </div>
           </Form>
         </Card.Body>
@@ -949,6 +883,210 @@ export default function PedidoFormPage() {
             </Button>
           )}
           <Button variant="secondary" onClick={() => setShowCatalogDetail(false)}>Fechar</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal: edição de quantidade do item (usado pelo badge e quando + excede estoque) */}
+      <Modal show={showQtyModal} onHide={() => { setShowQtyModal(false); setQtyModalError(null) }} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Editar quantidade</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {qtyModalLoading ? (
+            <div className="d-flex align-items-center gap-2"><Spinner animation="border" size="sm" /><span>Verificando estoque...</span></div>
+          ) : (
+            <>
+              <div className="mb-2 fw-semibold">{qtyModalProduct?.nome}</div>
+              <Form.Group>
+                <Form.Label>Quantidade desejada</Form.Label>
+                <Form.Control type="number" min={1} value={qtyModalValue} onChange={(e) => setQtyModalValue(Math.max(1, Number(e.target.value)))} />
+              </Form.Group>
+              {qtyModalStock != null && (
+                <div className="small text-muted mt-2">Estoque atual: {qtyModalStock}</div>
+              )}
+              {qtyModalError && (
+                <div className="text-danger mt-2">{qtyModalError}</div>
+              )}
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => { setShowQtyModal(false); setQtyModalError(null) }}>Fechar</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (!qtyModalProduct) return
+              if (qtyModalStock != null && qtyModalValue > qtyModalStock) {
+                setQtyModalError(`Estoque não disponível, estoque atual: ${qtyModalStock}`)
+                return
+              }
+              // apply quantity
+              setItens((arr) => {
+                const idx = arr.findIndex((it) => (it.sku || '').toLowerCase() === (qtyModalProduct?.codigo || '').toLowerCase())
+                if (idx >= 0) {
+                  const next = [...arr]
+                  next[idx] = { ...next[idx], quantidade: qtyModalValue }
+                  return next
+                }
+                const nextId = arr.reduce((m, it) => Math.max(m, it.id), 0) + 1
+                return [
+                  ...arr,
+                  {
+                    id: nextId,
+                    nome: qtyModalProduct.nome,
+                    sku: qtyModalProduct.codigo,
+                    quantidade: qtyModalValue,
+                    unidade: 'PC',
+                    preco: Number(qtyModalProduct.preco || 0),
+                    imagemUrl: qtyModalProduct.imagem || undefined,
+                  },
+                ]
+              })
+              setShowQtyModal(false)
+              setQtyModalError(null)
+            }}
+          >
+            Salvar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal: Lista completa de itens (abre pela lista rolável) */}
+      <Modal show={showCatalogListModal} onHide={() => setShowCatalogListModal(false)} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Lista de itens</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="table-responsive d-none d-md-block" style={{ maxWidth: '100%', overflowX: 'auto', overflowY: 'auto', maxHeight: '60vh' }}>
+            <Table hover className="mb-0">
+              <thead>
+                <tr>
+                  <th style={{ width: 70 }}>N°</th>
+                  <th style={{ minWidth: 360 }}>Nome</th>
+                  <th style={{ width: 120 }}>SKU</th>
+                  <th style={{ width: 100 }}>Qtde</th>
+                  <th style={{ width: 90 }}>Unidade</th>
+                  <th style={{ width: 100 }}>Estoque</th>
+                  <th style={{ width: 130 }}>Preço un</th>
+                  <th style={{ width: 150 }}>Total</th>
+                  <th style={{ width: 120 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {itens.map((item, idx) => {
+                  const totalItem = item.quantidade * item.preco
+                  return (
+                    <tr key={item.id}>
+                      <td>{idx + 1}</td>
+                      <td>
+                        <div className="position-relative">
+                          <div className="d-flex gap-2 align-items-center">
+                            {item.imagemUrl ? (
+                              <img
+                                src={item.imagemUrl}
+                                alt="Produto"
+                                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }}
+                                onClick={() => { setPreviewUrl(item.imagemUrl || null); setShowPreview(true) }}
+                                className="flex-shrink-0"
+                              />
+                            ) : null}
+                            <div className="flex-grow-1">{item.nome}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        {item.sku || '-'}
+                      </td>
+                      <td>
+                        {item.quantidade}
+                      </td>
+                      <td>
+                        {item.unidade}
+                      </td>
+                      <td>
+                        {item.estoque ?? 0}
+                      </td>
+                      <td>
+                        {item.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                      <td>
+                        {totalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                      <td className="text-center">
+                        <div className="d-flex justify-content-center gap-2">
+                          <Button variant="outline-danger" size="sm" onClick={() => removeItem(item.id)} title="Remover">
+                            <IconifyIcon icon="ri:delete-bin-line" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </Table>
+          </div>
+          {/* Mobile (sm) - Itens empilhados dentro do modal */}
+          <div className="d-block d-md-none mt-3">
+            {itens.map((item, idx) => {
+              const totalItem = item.quantidade * item.preco
+              return (
+                <div key={item.id} className="border rounded p-2 mb-2">
+                  <div className="small text-muted">N° {idx + 1}</div>
+                  <Form.Group className="mt-1">
+                    <Form.Label className="mb-1">Nome</Form.Label>
+                    <div className="d-flex gap-2 align-items-center">
+                      {item.imagemUrl ? (
+                        <img
+                          src={item.imagemUrl}
+                          alt="Produto"
+                          style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, cursor: 'pointer' }}
+                          onClick={() => { setPreviewUrl(item.imagemUrl || null); setShowPreview(true) }}
+                          className="flex-shrink-0"
+                        />
+                      ) : null}
+                      <div className="flex-grow-1">{item.nome}</div>
+                    </div>
+                  </Form.Group>
+                  <Row className="g-2 mt-1">
+                    <Col xs={6}>
+                      <Form.Label className="mb-1">SKU</Form.Label>
+                      <div className="form-control-plaintext">{item.sku || ''}</div>
+                    </Col>
+                    <Col xs={6}>
+                      <Form.Label className="mb-1">Estoque</Form.Label>
+                      <div className="form-control-plaintext">{item.estoque ?? 0}</div>
+                    </Col>
+                  </Row>
+                  <Row className="g-2 mt-1">
+                    <Col xs={6}>
+                      <Form.Label className="mb-1">Qtde</Form.Label>
+                      <div className="form-control-plaintext">{item.quantidade}</div>
+                    </Col>
+                    <Col xs={6}>
+                      <Form.Label className="mb-1">Unidade</Form.Label>
+                      <div className="form-control-plaintext">{item.unidade}</div>
+                    </Col>
+                    <Col xs={6}>
+                      <Form.Label className="mb-1">Preço un</Form.Label>
+                      <div className="form-control-plaintext">{item.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                    </Col>
+                    <Col xs={6}>
+                      <Form.Label className="mb-1">Total</Form.Label>
+                      <div className="form-control-plaintext">{totalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                    </Col>
+                  </Row>
+                  <div className="d-flex justify-content-end gap-2 mt-2">
+                    <Button variant="outline-danger" size="sm" onClick={() => removeItem(item.id)} title="Remover">
+                      <IconifyIcon icon="ri:delete-bin-line" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowCatalogListModal(false)}>Fechar</Button>
         </Modal.Footer>
       </Modal>
 

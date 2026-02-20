@@ -15,7 +15,7 @@
      white-space: nowrap;
      transition: all 0.3s ease-in-out;
      line-height: $topbar-height;
-     padding: 0 calc($main-nav-width-sm * 0.5 - $logo-sm-height * 0.5);
+     padding: 1%;
 
      .logo-sm {
           display: none;
@@ -23,7 +23,7 @@
      }
 
      .logo-lg {
-          height: 120px;
+          height: 80px;
      }
 
      .logo-light {

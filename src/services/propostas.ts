@@ -12,7 +12,7 @@ export async function getPropostas(): Promise<Pedido[]> {
   }
 }
 
-export async function createProposta(input: Partial<Pedido> & { id?: number }) {
+export async function createProposta(input: Partial<Pedido> & { id?: number; id_vendedor_externo?: string | null; client_vendor_externo?: string | null }) {
   const res = await fetch('/api/propostas', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

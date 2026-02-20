@@ -42,7 +42,7 @@ const SignIn = () => {
                   </Link>
                 </div>
                 <h2 className="fw-bold text-uppercase text-center fs-18">Sign In</h2>
-                <p className="text-muted text-center mt-1 mb-4">Enter your email address and password to access admin panel.</p>
+                <p className="text-muted text-center mt-1 mb-4">Use seu email e senha para acessar o sistema.</p>
                 <div className="px-4">
                   <form className="authentication-form" onSubmit={login}>
                     <div className="mb-3">
