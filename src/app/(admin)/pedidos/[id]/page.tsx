@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import PageTitle from '@/components/PageTitle'
 import { Card, Row, Col, Form, Button, Table, Modal, Spinner, OverlayTrigger, Tooltip } from 'react-bootstrap'
-import { getPedidoByNumero, savePedido, Pedido, PedidoStatus, getNextPedidoNumero } from '@/services/pedidos'
+import { getPedidoByNumero, Pedido, PedidoStatus, getNextPedidoNumero, savePedido as savePedidoRemote } from '@/services/pedidos2'
 import { createProposta } from '@/services/propostas'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
@@ -31,6 +31,8 @@ export default function PedidoFormPage() {
 
   type ItemPedido = { id: number; nome: string; sku?: string; quantidade: number; unidade: string; preco: number; estoque?: number; produtoId?: number; imagemUrl?: string }
   const [itens, setItens] = useState<ItemPedido[]>([])
+  // Keep original unit price so we can reapply markups without compounding
+  type ItemPedidoWithOriginal = ItemPedido & { originalPreco?: number }
 
   const [showPreview, setShowPreview] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -54,6 +56,9 @@ export default function PedidoFormPage() {
   const [qtyModalStock, setQtyModalStock] = useState<number | null>(null)
   const [qtyModalLoading, setQtyModalLoading] = useState(false)
   const [qtyModalError, setQtyModalError] = useState<string | null>(null)
+  const [showTinyResult, setShowTinyResult] = useState(false)
+  const [tinyResult, setTinyResult] = useState<any>(null)
+  const [sentObjectResult, setSentObjectResult] = useState<any>(null)
 
   // Histórico de produtos
   type HistoryItem = {
@@ -204,8 +209,9 @@ export default function PedidoFormPage() {
               quantidade: 1,
               unidade: 'PC',
               preco: Number(p.preco || 0),
+              originalPreco: Number(p.preco || 0),
               imagemUrl: p.imagem || undefined,
-            },
+            } as ItemPedidoWithOriginal,
           ]
         })
       } catch (e) {
@@ -301,8 +307,9 @@ export default function PedidoFormPage() {
     if (trimmed.length >= 3) {
       clientDebounceRef.current = setTimeout(async () => {
         try {
-          const res = await fetch(`/api/clientes?q=${encodeURIComponent(trimmed)}`)
+          const res = await fetch(`/api/clientes?q=${encodeURIComponent(trimmed)}`, { credentials: 'same-origin' })
           const data = await res.json()
+          console.debug('clientes search res', res.status, data)
           const options: ClientSuggestion[] = (data?.data || []).map((c: any) => ({
             id: Number(c?.id ?? 0),
             nome: c?.nome || '',
@@ -314,6 +321,7 @@ export default function PedidoFormPage() {
           setClientSuggestions(options)
           setShowClientSuggest(options.length > 0)
         } catch (e) {
+          console.error('Erro buscando clientes', e)
           setClientSuggestions([])
           setShowClientSuggest(false)
         }
@@ -354,25 +362,69 @@ export default function PedidoFormPage() {
 
       // Determine if this submission is a proposta via search param
       if (entityParam === 'proposta') {
-        // create proposal (ensure status is 'Proposta')
-        const numero = await createProposta({
+        // prepare payload ensuring cliente is an object with nome and cpf_cnpj
+        const payloadProposal: any = {
           ...form,
           status: 'Proposta',
           total: totalComDesconto,
           id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
           client_vendor_externo: selectedClient?.id_vendedor_externo || null,
-        } as any)
+        }
+        payloadProposal.cliente =
+          !payloadProposal.cliente || typeof payloadProposal.cliente === 'string'
+            ? { nome: String(form.cliente || '').trim(), cpf_cnpj: String(form.cnpj || '').trim() }
+            : { ...(payloadProposal.cliente || {}), cpf_cnpj: String(form.cnpj || '').trim(), nome: payloadProposal.cliente.nome || String(form.cliente || '').trim() }
+        // remove top-level cnpj to avoid duplication when sending to Tiny via backend
+        delete payloadProposal.cnpj
+        const numero = await createProposta(payloadProposal as any)
         router.push('/propostas')
         return
       }
 
       // Apenas salvar localmente na plataforma (pedido)
-      const saved = await savePedido({
+      const payloadToSend: any = {
         ...form,
         total: totalComDesconto,
         id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
         client_vendor_externo: selectedClient?.id_vendedor_externo || null,
-      })
+      }
+      payloadToSend.cliente =
+        !payloadToSend.cliente || typeof payloadToSend.cliente === 'string'
+          ? { nome: String(form.cliente || '').trim(), cpf_cnpj: String(form.cnpj || '').trim() }
+          : { ...(payloadToSend.cliente || {}), cpf_cnpj: String(form.cnpj || '').trim(), nome: payloadToSend.cliente.nome || String(form.cliente || '').trim() }
+      delete payloadToSend.cnpj
+      // Map local itens to Tiny documentation format:
+      // pedido.itens = [ { item: { codigo, descricao, unidade, quantidade, valor_unitario } }, ... ]
+      if (itens && itens.length > 0) {
+        const tinyItems = itens
+          .map((it) => {
+            const descricao = it.nome?.toString().trim()
+            const quantidade = Number(it.quantidade || 0)
+            if (!descricao || quantidade <= 0) return null
+            return {
+              item: {
+                codigo: it.sku || undefined,
+                descricao,
+                unidade: it.unidade || 'UN',
+                quantidade: String(quantidade),
+                valor_unitario: String(Number(it.preco || 0).toFixed(2)),
+              },
+            }
+          })
+          .filter(Boolean)
+        if (tinyItems.length > 0) {
+          payloadToSend.itens = tinyItems
+        }
+      }
+      const saved = await savePedidoRemote(payloadToSend)
+      // If backend returned Tiny API response instead of a platform 'numero', show it to the user
+      if (saved && (saved as any).tinyResponse) {
+        setTinyResult((saved as any).tinyResponse)
+        setSentObjectResult((saved as any).sentObject ?? (saved as any))
+        setShowTinyResult(true)
+        setIsSubmitting(false)
+        return
+      }
       if (isNew) {
         router.push('/pedidos')
       } else {
@@ -485,6 +537,20 @@ export default function PedidoFormPage() {
     })
   }, [diasParcelas, totalComDesconto, form.data, formaRecebimento])
 
+  const markupPct = useMemo(() => {
+    if (formaRecebimento !== 'Boleto') return 0
+    let firstDay: number | null = null
+    if (diasParcelas && diasParcelas.length > 0) firstDay = diasParcelas[0]
+    if (firstDay == null || Number.isNaN(firstDay)) {
+      const m = String(condicaoPagamento || '').match(/\d+/)
+      firstDay = m ? Number(m[0]) : NaN
+    }
+    if (Number.isNaN(firstDay) || firstDay == null) return 0
+    if (firstDay < 30) return 0.02
+    if (firstDay >= 30 && firstDay < 40) return 0.03
+    return 0.04
+  }, [formaRecebimento, diasParcelas, condicaoPagamento])
+
   // Validação: valor mínimo da parcela para Boleto
   const pagamentoParceladoErro = useMemo(() => {
     if (formaRecebimento !== 'Boleto') return ''
@@ -495,6 +561,38 @@ export default function PedidoFormPage() {
     }
     return ''
   }, [formaRecebimento, parcelas])
+
+  // Apply markup on itens when boleto condition changes
+  useEffect(() => {
+    const applyMarkup = () => {
+      if (formaRecebimento !== 'Boleto' || !condicaoPagamento) {
+        // revert to original prices
+        setItens((arr) => arr.map((it: any) => ({ ...it, preco: (it.originalPreco != null ? it.originalPreco : it.preco) })))
+        return
+      }
+      // extract first numeric day from condicaoPagamento
+      const m = String(condicaoPagamento).match(/\d+/)
+      const firstDay = m ? Number(m[0]) : NaN
+      let pct = 0
+      if (!isNaN(firstDay)) {
+        if (firstDay < 30) pct = 0.02
+        else if (firstDay >= 30 && firstDay < 40) pct = 0.03
+        else pct = 0.04
+      } else {
+        pct = 0
+      }
+      if (pct === 0) {
+        setItens((arr) => arr.map((it: any) => ({ ...it, preco: (it.originalPreco != null ? it.originalPreco : it.preco) })))
+        return
+      }
+      setItens((arr) => arr.map((it: any) => {
+        const base = it.originalPreco != null ? it.originalPreco : it.preco
+        const newPrice = Math.round((Number(base || 0) * (1 + pct)) * 100) / 100
+        return { ...it, preco: newPrice }
+      }))
+    }
+    applyMarkup()
+  }, [condicaoPagamento, formaRecebimento])
 
   const onNomeChange = (itemId: number, value: string) => {
     setItens((arr) => arr.map((it) => it.id === itemId ? { ...it, nome: value } : it))
@@ -536,6 +634,7 @@ export default function PedidoFormPage() {
         sku: prod?.codigo || it.sku,
         unidade: prod?.unidade || it.unidade,
         preco: Number(prod?.preco || 0),
+        originalPreco: Number(prod?.preco || 0),
         estoque: Number(est?.totalEstoque ?? 0),
         imagemUrl: prod?.imagem || it.imagemUrl,
       } : it))
@@ -601,7 +700,7 @@ export default function PedidoFormPage() {
         <Card.Header className="bg-white fw-semibold">Dados do cliente</Card.Header>
         <Card.Body>
           <Row className="g-3 align-items-end">
-            <Col lg={6}>
+            <Col lg={4}>
               <Form.Label>Cliente</Form.Label>
               <div className="position-relative">
                 <Form.Control
@@ -637,25 +736,40 @@ export default function PedidoFormPage() {
                 )}
               </div>
             </Col>
-            <Col lg={3}>
+            <Col lg={2}>
               <Form.Label>Vendedor</Form.Label>
               <Form.Control type="text" value={meVendedor?.nome || meVendedor?.id_vendedor_externo || ''} disabled />
             </Col>
-            <Col lg={3} className="d-flex justify-content-lg-end">
-              {/* <Button variant="outline-primary" onClick={() => router.push('/customers/add')}>
-                Cadastrar Cliente
-              </Button> */}
+            <Col lg={3}>
+              <Form.Label>Forma de recebimento</Form.Label>
+              <Form.Select value={formaRecebimento} onChange={(e) => { setFormaRecebimento(e.target.value); setCondicaoPagamento(''); setDescontoPercent(0) }}>
+                <option value="Boleto">Boleto</option>
+                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                <option value="Pix">Pix</option>
+                <option value="Dinheiro">Dinheiro</option>
+              </Form.Select>
             </Col>
+            <Col lg={3}>
+              <Form.Label>Condição de pagamento</Form.Label>
+              <Form.Select value={condicaoPagamento} onChange={(e) => setCondicaoPagamento(e.target.value)}>
+                <option value="">Selecione</option>
+                {condicoesPagamentoOptions.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </Form.Select>
+            </Col>
+            {/* removed extra placeholder column */}
           </Row>
         </Card.Body>
       </Card>
 
-      {/* Sessão 2 - Produtos */}
-      <Card className="border-0 shadow-sm mb-3">
-        <Card.Header className="bg-white d-flex justify-content-between align-items-center">
-          <div className="fw-semibold">Produtos</div>
-        </Card.Header>
-        <Card.Body>
+      {/* Sessão 2 - Produtos */} 
+      {condicaoPagamento && (
+        <Card className="border-0 shadow-sm mb-3">
+          <Card.Header className="bg-white d-flex justify-content-between align-items-center">
+            <div className="fw-semibold">Produtos</div>
+          </Card.Header>
+          <Card.Body>
           <div className="mb-3">
             <Form.Label className="fw-semibold">Busca de produtos </Form.Label>
             <Form.Control
@@ -677,7 +791,13 @@ export default function PedidoFormPage() {
                         <div className="fw-semibold small">{p.nome}</div>
                         <div className="text-muted small">SKU: {p.codigo || '-'}</div>
                         {p.preco != null && (
-                          <div className="text-muted small">Preço: {Number(p.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                          <div className="text-muted small">
+                            Preço:{' '}
+                            {Number(((p.preco || 0) * (1 + markupPct)) || 0).toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })}
+                          </div>
                         )}
                       </div>
                       <div className="d-flex gap-1">
@@ -724,36 +844,22 @@ export default function PedidoFormPage() {
               Histórico de produtos do cliente
             </Button>
           </div>
-        </Card.Body>
-      </Card>
+          </Card.Body>
+        </Card>
+      )}
 
-      {/* Sessão 3 - Pagamento */}
-      <Card className="border-0 shadow-sm">
-        <Card.Header className="bg-white fw-semibold">Pagamento</Card.Header>
-        <Card.Body>
-          <Form onSubmit={handleSubmit}>
+      {/* Sessão 3 - Pagamento */} 
+      {condicaoPagamento && (
+        <Card className="border-0 shadow-sm">
+          <Card.Header className="bg-white fw-semibold">Pagamento</Card.Header>
+          <Card.Body>
+            <Form onSubmit={handleSubmit}>
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label>Data da venda</Form.Label>
                 <Form.Control type="date" value={form.data} onChange={(e) => handleChange('data', e.target.value)} />
               </Col>
-              <Col md={4}>
-                <Form.Label>Forma de recebimento</Form.Label>
-                <Form.Select value={formaRecebimento} onChange={(e) => { setFormaRecebimento(e.target.value); setCondicaoPagamento(''); setDescontoPercent(0) }}>
-                  <option value="Boleto">Boleto</option>
-                  <option value="Cartão de Crédito">Cartão de Crédito</option>
-                  <option value="Pix">Pix</option>
-                  <option value="Dinheiro">Dinheiro</option>
-                </Form.Select>
-              </Col>
-              <Col md={4}>
-                <Form.Label>Condição de pagamento</Form.Label>
-                <Form.Select value={condicaoPagamento} onChange={(e) => setCondicaoPagamento(e.target.value)}>
-                  {condicoesPagamentoOptions.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </Form.Select>
-              </Col>
+              {/* Forma de recebimento moved to header */} 
             </Row>
 
             <Row className="g-3 mt-1">
@@ -825,8 +931,9 @@ export default function PedidoFormPage() {
               <Button variant="secondary" onClick={() => router.push(entityParam === 'proposta' ? '/propostas' : '/pedidos')}>Cancelar</Button>
             </div>
           </Form>
-        </Card.Body>
-      </Card>
+          </Card.Body>
+        </Card>
+      )}
 
       <Modal show={showPreview} onHide={() => setShowPreview(false)} centered>
         <Modal.Header closeButton>
@@ -846,6 +953,26 @@ export default function PedidoFormPage() {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal: Resultado da chamada ao Tiny (mostrar retorno e objeto enviado) */}
+      <Modal show={showTinyResult} onHide={() => { setShowTinyResult(false); setTinyResult(null); setSentObjectResult(null) }} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Resposta do Tiny</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="mb-3">
+            <div className="fw-semibold">Objeto enviado</div>
+            <pre style={{ maxHeight: 240, overflow: 'auto', background: '#f8f9fa', padding: 12 }}>{JSON.stringify(sentObjectResult, null, 2)}</pre>
+          </div>
+          <div>
+            <div className="fw-semibold">Resposta da API Tiny</div>
+            <pre style={{ maxHeight: 320, overflow: 'auto', background: '#f8f9fa', padding: 12 }}>{JSON.stringify(tinyResult, null, 2)}</pre>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => { setShowTinyResult(false); setTinyResult(null); setSentObjectResult(null) }}>Fechar</Button>
+        </Modal.Footer>
+      </Modal>
+
       {/* Detalhes do produto do catálogo */}
       <Modal show={showCatalogDetail} onHide={() => setShowCatalogDetail(false)} centered>
         <Modal.Header closeButton>
@@ -862,7 +989,7 @@ export default function PedidoFormPage() {
             <div>
               <div className="mb-2"><strong>Nome:</strong> {catalogDetail?.nome ?? catalogSelected.nome}</div>
               <div className="mb-2"><strong>SKU:</strong> {(catalogDetail?.codigo ?? catalogSelected.codigo) || '-'}</div>
-              <div className="mb-2"><strong>Preço:</strong> {Number((catalogDetail?.preco ?? catalogSelected.preco) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+              <div className="mb-2"><strong>Preço:</strong> {Number(((catalogDetail?.preco ?? catalogSelected.preco) * (1 + markupPct)) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
               {catalogDetail?.unidade && <div className="mb-2"><strong>Unidade:</strong> {catalogDetail.unidade}</div>}
               {catalogDetail?.estoque != null && <div className="mb-2"><strong>Estoque:</strong> {catalogDetail.estoque}</div>}
               {catalogDetail?.descricao && <div className="mb-2"><strong>Descrição:</strong> <div className="small text-muted">{catalogDetail.descricao}</div></div>}

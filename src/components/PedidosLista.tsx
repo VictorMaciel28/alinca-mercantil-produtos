@@ -3,9 +3,9 @@
  import { useEffect, useState } from "react";
 import { Card, Form, Table, Badge, Row, Col, Button, Modal, Spinner } from "react-bootstrap";
  import PageTitle from '@/components/PageTitle'
- import { Pedido } from '@/services/pedidos'
+import { Pedido } from '@/services/pedidos2'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
-import { savePedido } from '@/services/pedidos'
+import { savePedido as savePedidoRemote } from '@/services/pedidos2'
  import { useRouter } from 'next/navigation'
  
  interface PedidosListaProps {
@@ -109,7 +109,7 @@ import { savePedido } from '@/services/pedidos'
     setIsEvolving(true)
     setEvolveError(null)
     try {
-      await savePedido({ ...evolveItem, status: 'Pendente' })
+      await savePedidoRemote({ ...evolveItem, status: 'Pendente' })
       // remove from list (it's no longer a proposal)
       setItems((arr) => arr.filter((it) => it.numero !== evolveItem.numero))
       setShowEvolveModal(false)

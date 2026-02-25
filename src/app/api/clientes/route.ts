@@ -45,6 +45,37 @@ export async function GET(req: Request) {
 
     // Apply name search if provided
     if (q) {
+      // First try Tiny contatos.pesquisa (live search) when query provided and token exists
+      try {
+        const token = process.env.TINY_API_TOKEN
+        if (token) {
+          const tinyRes = await fetch(`https://api.tiny.com.br/api2/contatos.pesquisa.php?token=${encodeURIComponent(token)}&pesquisa=${encodeURIComponent(q)}&formato=json`)
+          const tinyJson = await tinyRes.json().catch(() => null)
+          const contatos = tinyJson?.retorno?.contatos || []
+          if (Array.isArray(contatos) && contatos.length > 0) {
+            const clientesFromTiny = contatos.map((entry: any) => {
+              const c = entry?.contato || {}
+              return {
+                id: Number(c.id || 0),
+                nome: c.nome || '',
+                cpf_cnpj: c.cpf_cnpj || '',
+                id_vendedor_externo: c.id_vendedor || null,
+                nome_vendedor: c.nome_vendedor || null,
+                cidade: c.cidade || null,
+                endereco: c.endereco || null,
+                bairro: c.bairro || null,
+                cep: c.cep || null,
+                uf: c.uf || null,
+                fone: c.fone || null,
+              }
+            }).filter((c: any) => !!c.nome)
+            return NextResponse.json({ ok: true, data: clientesFromTiny })
+          }
+        }
+      } catch (e) {
+        // ignore tiny errors and fallback to DB search below
+      }
+      // fallback to DB search
       where = { ...(where || {}), nome: { contains: q } }
     }
 

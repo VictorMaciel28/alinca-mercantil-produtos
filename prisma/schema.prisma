@@ -163,6 +163,7 @@ model platform_order {
   status               PedidoStatus
   id_vendedor_externo  String?       @db.VarChar(100)
   client_vendor_externo String?      @db.VarChar(100)
+  tiny_id              Int?
   vendedor_id          Int? 
   vendedor             vendedor?     @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
   created_at           DateTime      @default(now()) @db.DateTime(0)
