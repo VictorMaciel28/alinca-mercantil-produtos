@@ -169,6 +169,7 @@ model platform_order {
   created_at           DateTime      @default(now()) @db.DateTime(0)
   updated_at           DateTime      @updatedAt @db.DateTime(0)
   commissions          platform_commission[]
+  products             platform_order_product[]
 }
 
 enum CommissionRole {
@@ -407,6 +408,23 @@ model tiny_order_products {
 
   @@unique([pedido_id, produto_id], map: "uk_tiny_order_products_pedido_produto")
   @@index([produto_id], map: "idx_tiny_order_products_produto")
+}
+
+model platform_order_product {
+  id         Int      @id @default(autoincrement())
+  order_num  Int
+  produto_id Int?
+  codigo     String?  @db.VarChar(100)
+  nome       String   @db.VarChar(255)
+  preco      Decimal  @db.Decimal(15, 2)
+  quantidade Decimal  @default(1.000) @db.Decimal(15, 3)
+  unidade    String?  @db.VarChar(20)
+  created_at DateTime @default(now()) @db.DateTime(0)
+
+  order      platform_order @relation(fields: [order_num], references: [numero], onDelete: Cascade)
+
+  @@unique([order_num, produto_id], map: "uk_platform_order_product_order_produto")
+  @@index([order_num], map: "idx_platform_order_product_order")
 }
 
 model tiny_orders {

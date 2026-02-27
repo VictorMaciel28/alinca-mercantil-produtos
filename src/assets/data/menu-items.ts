@@ -13,7 +13,7 @@ export const MENU_ITEMS: MenuItemType[] = [
     children: [
       {
         key: 'pedidos',
-        label: 'Pedidos',
+        label: 'Pedidos de venda',
         icon: 'ri:menu-line',
         url: '/pedidos',
         parentKey: 'vendas',

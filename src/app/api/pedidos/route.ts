@@ -217,6 +217,34 @@ export async function POST(req: Request) {
     pedidoToSend.data_pedido = body?.data ? makeDDMMYYYY(body.data) : makeDDMMYYYY(new Date())
 
     // Build form data for Tiny (Tiny expects 'pedido' as JSON string)
+    // If itens are present in platform format (platform_order_product shape), convert to Tiny format
+    try {
+      if (Array.isArray(pedidoToSend.itens) && pedidoToSend.itens.length > 0) {
+        const first = pedidoToSend.itens[0]
+        const looksLikePlatform = Object.prototype.hasOwnProperty.call(first, 'nome') || Object.prototype.hasOwnProperty.call(first, 'codigo') || Object.prototype.hasOwnProperty.call(first, 'preco')
+        if (looksLikePlatform) {
+          pedidoToSend.itens = pedidoToSend.itens
+            .map((it: any) => {
+              const descricao = it.nome || it.descricao || ''
+              const quantidade = Number(it.quantidade || 0)
+              if (!descricao || quantidade <= 0) return null
+              return {
+                item: {
+                  codigo: it.codigo || it.sku || undefined,
+                  descricao,
+                  unidade: it.unidade || 'UN',
+                  quantidade: String(quantidade),
+                  valor_unitario: String(Number(it.preco || 0).toFixed(2)),
+                },
+              }
+            })
+            .filter(Boolean)
+        }
+      }
+    } catch (e) {
+      // ignore conversion errors and send as-is
+    }
+
     const formData = new URLSearchParams()
     formData.append('token', tinyToken)
     formData.append('formato', 'json')

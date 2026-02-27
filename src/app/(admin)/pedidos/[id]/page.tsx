@@ -376,6 +376,17 @@ export default function PedidoFormPage() {
             : { ...(payloadProposal.cliente || {}), cpf_cnpj: String(form.cnpj || '').trim(), nome: payloadProposal.cliente.nome || String(form.cliente || '').trim() }
         // remove top-level cnpj to avoid duplication when sending to Tiny via backend
         delete payloadProposal.cnpj
+        // Include items in platform format so they are persisted with the proposal (not sent to Tiny yet)
+        if (itens && itens.length > 0) {
+          payloadProposal.itens = itens.map((it) => ({
+            produtoId: it.produtoId ?? null,
+            codigo: it.sku ?? undefined,
+            nome: it.nome,
+            quantidade: it.quantidade,
+            unidade: it.unidade,
+            preco: it.preco,
+          }))
+        }
         const numero = await createProposta(payloadProposal as any)
         router.push('/propostas')
         return

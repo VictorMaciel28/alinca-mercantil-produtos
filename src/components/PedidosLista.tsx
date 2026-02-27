@@ -109,10 +109,16 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
     setIsEvolving(true)
     setEvolveError(null)
     try {
-      await savePedidoRemote({ ...evolveItem, status: 'Pendente' })
-      // remove from list (it's no longer a proposal)
-      setItems((arr) => arr.filter((it) => it.numero !== evolveItem.numero))
-      setShowEvolveModal(false)
+      const res = await savePedidoRemote({ ...evolveItem, status: 'Pendente' })
+      // Only remove the proposal from the list if backend returned a platform numero (pedido created)
+      if (res && (res as any).numero) {
+        setItems((arr) => arr.filter((it) => it.numero !== evolveItem.numero))
+        setShowEvolveModal(false)
+      } else {
+        // Do not remove; surface error to user for inspection
+        console.debug('Evolve response', res)
+        setEvolveError('A proposta não foi transformada em pedido: o serviço não retornou um número de pedido.')
+      }
     } catch (err: any) {
       setEvolveError(err?.message || 'Falha ao evoluir proposta')
     } finally {

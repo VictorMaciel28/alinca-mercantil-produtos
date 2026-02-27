@@ -41,15 +41,29 @@ export async function GET() {
       })
     }
 
-    const data = rows.map((r) => ({
-      numero: r.numero,
-      data: r.data.toISOString().slice(0, 10),
-      cliente: r.cliente,
-      cnpj: r.cnpj,
-      total: Number(r.total),
-      status: 'Proposta',
-      id_vendedor_externo: r.id_vendedor_externo,
-    }))
+    // Include products for each proposal (if any)
+    const data = await Promise.all(
+      rows.map(async (r) => {
+        const products = await prisma.platform_order_product.findMany({ where: { order_num: r.numero } })
+        return {
+          numero: r.numero,
+          data: r.data.toISOString().slice(0, 10),
+          cliente: r.cliente,
+          cnpj: r.cnpj,
+          total: Number(r.total),
+          status: 'Proposta',
+          id_vendedor_externo: r.id_vendedor_externo,
+          itens: products.map((p) => ({
+            produtoId: p.produto_id,
+            codigo: p.codigo,
+            nome: p.nome,
+            quantidade: Number(p.quantidade),
+            unidade: p.unidade,
+            preco: Number(p.preco),
+          })),
+        }
+      })
+    )
 
     return NextResponse.json({ ok: true, data })
   } catch (error: any) {
@@ -76,8 +90,16 @@ export async function POST(req: Request) {
 
     const body = await req.json()
     const dataStr = (body?.data || '').toString().slice(0, 10)
-    const cliente = (body?.cliente || '').toString().trim()
-    const cnpj = (body?.cnpj || '').toString().trim()
+    // Accept cliente sent either as string or as an object { nome, cpf_cnpj }.
+    let cliente = ''
+    let cnpj = ''
+    if (body?.cliente && typeof body.cliente === 'object') {
+      cliente = (body.cliente?.nome || '').toString().trim()
+      cnpj = (body.cliente?.cpf_cnpj || body.cliente?.cnpj || body?.cnpj || '').toString().trim()
+    } else {
+      cliente = (body?.cliente || '').toString().trim()
+      cnpj = (body?.cnpj || '').toString().trim()
+    }
     const total = Number(body?.total || 0)
     const id_vendedor_externo =
       body?.id_vendedor_externo != null ? body.id_vendedor_externo?.toString?.().trim?.() || null : null
@@ -105,6 +127,26 @@ export async function POST(req: Request) {
         vendedor_id: vendedorId,
       },
     })
+
+    // Persist any provided items linked to this proposal (do not send to Tiny here)
+    try {
+      const itens = Array.isArray(body?.itens) ? body.itens : []
+      if (itens.length > 0) {
+        const toCreate = itens.map((it: any) => ({
+          order_num: created.numero,
+          produto_id: it.produtoId != null ? Number(it.produtoId) : null,
+          codigo: it.codigo || (it.sku || null),
+          nome: it.nome || it.descricao || '',
+          quantidade: typeof it.quantidade === 'number' ? it.quantidade : Number(it.quantidade || 0),
+          unidade: it.unidade || 'UN',
+          preco: typeof it.preco === 'number' ? it.preco : Number(it.preco || 0),
+        }))
+        await prisma.platform_order_product.createMany({ data: toCreate })
+      }
+    } catch (e) {
+      // ignore product persistence errors to avoid blocking proposal creation
+      console.error('Failed saving proposal items', e)
+    }
 
     return NextResponse.json({ ok: true, numero: created.numero })
   } catch (error: any) {
