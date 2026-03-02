@@ -231,6 +231,17 @@ model wp_users {
   @@index([user_nicename], map: "user_nicename")
 }
 
+model whatsapp_session {
+  id          Int      @id @default(autoincrement())
+  session_id  String   @unique @db.VarChar(100)
+  status      String   @db.VarChar(50)
+  phone       String?  @db.VarChar(50)
+  client_info Json?
+  last_seen   DateTime?
+  created_at  DateTime @default(now()) @db.DateTime(0)
+  updated_at  DateTime @updatedAt @db.DateTime(0)
+}
+
 model account {
   id   Int    @id @default(autoincrement())
   code Int

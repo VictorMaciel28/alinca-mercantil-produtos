@@ -63,6 +63,12 @@ export const MENU_ITEMS: MenuItemType[] = [
     ],
   },
   {
+    key: 'whatsapp',
+    label: 'WhatsApp',
+    icon: 'ri:whatsapp-line',
+    url: '/whatsapp',
+  },
+  {
     key: 'comissoes',
     label: 'Comissões',
     icon: 'ri:money-dollar-circle-line',
