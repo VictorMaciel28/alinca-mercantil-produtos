@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+// @ts-ignore
+import nodemailer from 'nodemailer'
 
 export const runtime = 'nodejs'
 
@@ -55,12 +57,16 @@ export async function POST(req: NextRequest) {
   const valorFormatted = Number(valor).toFixed(2).replace('.', ',')
 
   const message = `Nota ${numero} emitida para ${destine} (origem: ${emiter}) com forma de pagamento ${formaPagamento} no valor de R$ ${valorFormatted}.`
+  const chave = nota.chave_acesso ?? ''
 
   // send via existing internal whatsapp API
   const whatsappEndpoint =
     (process.env.NEXT_PUBLIC_INTERNAL_URL ? `${process.env.NEXT_PUBLIC_INTERNAL_URL}/api/whatsapp` : '') ||
     'http://localhost:3000/api/whatsapp'
 
+  const results: any = { whatsapp: null, email: null }
+
+  // attempt WhatsApp send
   try {
     const resp = await fetch(whatsappEndpoint, {
       method: 'POST',
@@ -70,10 +76,47 @@ export async function POST(req: NextRequest) {
         message,
       }),
     })
-    const jsonResp = await resp.json().catch(() => null)
-    return NextResponse.json({ ok: true, forwarded: !!jsonResp, result: jsonResp })
+    results.whatsapp = await resp.json().catch(() => null)
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: 'whatsapp_send_failed', detail: String(e) }, { status: 500 })
+    results.whatsapp = { error: String(e) }
   }
+
+  // send email notification
+  try {
+    const smtpHost = process.env.SMTP_HOST || 'br590.hostgator.com.br'
+    const smtpPort = Number(process.env.SMTP_PORT || '587')
+    const smtpUser = process.env.SMTP_USER || 'sama@aliancamercantil.com'
+    const smtpPass = process.env.SMTP_PASS || 'sama@aliancamercantil.com'
+    const from = process.env.EMAIL_FROM || smtpUser
+    const toEmail = process.env.NOTIFY_EMAIL || 'sama@aliancamercantil.com'
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465, // true for 465, false for other ports
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    })
+
+    const subject = `Nota ${numero} emitida — ${valorFormatted}`
+    const html = `<p>${message}</p><p><strong>Chave de acesso:</strong> ${chave}</p>`
+
+    const info = await transporter.sendMail({
+      from,
+      to: toEmail,
+      subject,
+      html,
+    })
+    results.email = { ok: true, info }
+  } catch (e: any) {
+    results.email = { error: String(e) }
+  }
+
+  return NextResponse.json({ ok: true, results })
 }
 
