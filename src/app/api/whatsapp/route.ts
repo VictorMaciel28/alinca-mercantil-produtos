@@ -5,6 +5,7 @@ export const runtime = 'nodejs'
 
 import fs from 'fs'
 import path from 'path'
+import { execSync } from 'child_process'
 
 // Use require for libs that may not have full ESM types in this environment
 // @ts-ignore
@@ -17,6 +18,7 @@ let client: any = null
 let currentQrDataUrl: string | null = null
 let connectionStatus = 'DISCONNECTED'
 const SESSION_ID = process.env.WA_SESSION_ID ?? 'alinca-whatsapp'
+let currentQrTimestamp: number | null = null
 
 function initClient() {
   if (client) return
@@ -29,6 +31,7 @@ function initClient() {
   client.on('qr', async (qr: string) => {
     try {
       currentQrDataUrl = await qrcode.toDataURL(qr)
+      currentQrTimestamp = Date.now()
       connectionStatus = 'QR'
       console.log('WhatsApp QR generated')
       // persist session row or update
@@ -141,9 +144,17 @@ export async function GET(req: NextRequest) {
     sessionFiles,
     clientInitialized: !!client,
     clientInfo: client?.info ?? null,
+    supported:
+      !(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.VERCEL || process.cwd() === '/var/task'),
+    currentQrAgeSeconds: currentQrTimestamp ? Math.floor((Date.now() - currentQrTimestamp) / 1000) : null,
   }
+  // only serve QR if recent (avoid stale data across processes)
+  const qrToReturn =
+    currentQrDataUrl && currentQrTimestamp && Date.now() - currentQrTimestamp < 1000 * 60 * 5
+      ? currentQrDataUrl
+      : null
 
-  return NextResponse.json({ status: connectionStatus, qr: currentQrDataUrl, diagnostics })
+  return NextResponse.json({ status: connectionStatus, qr: qrToReturn, diagnostics })
 }
 
 export async function POST(req: NextRequest) {
@@ -175,12 +186,52 @@ export async function POST(req: NextRequest) {
         } catch (e) {
           console.error('failed remove session dir', e)
         }
+      // attempt to kill Chrome/Chromium processes to fully clear locks
+      let killResults: string[] = []
+      try {
+        const platform = process.platform
+        if (platform === 'win32') {
+          try {
+            execSync('taskkill /F /IM chrome.exe', { stdio: 'ignore' })
+            killResults.push('taskkill chrome.exe ok')
+          } catch (e) {
+            killResults.push('taskkill chrome.exe failed')
+          }
+          try {
+            execSync('taskkill /F /IM msedge.exe', { stdio: 'ignore' })
+            killResults.push('taskkill msedge.exe ok')
+          } catch (e) {
+            killResults.push('taskkill msedge.exe failed')
+          }
+        } else {
+          try {
+            execSync('pkill -f Chrome || true', { stdio: 'ignore' })
+            killResults.push('pkill -f Chrome ok')
+          } catch (e) {
+            killResults.push('pkill -f Chrome failed')
+          }
+          try {
+            execSync('pkill -f chromium || true', { stdio: 'ignore' })
+            killResults.push('pkill -f chromium ok')
+          } catch (e) {
+            killResults.push('pkill -f chromium failed')
+          }
+          try {
+            execSync('pkill -f chrome || true', { stdio: 'ignore' })
+            killResults.push('pkill -f chrome ok')
+          } catch (e) {
+            killResults.push('pkill -f chrome failed')
+          }
+        }
+      } catch (e) {
+        console.error('error killing browser processes', e)
+      }
         await (prisma as any).whatsapp_session.upsert({
           where: { session_id: SESSION_ID },
           update: { status: connectionStatus, last_seen: new Date() },
           create: { session_id: SESSION_ID, status: connectionStatus, last_seen: new Date() },
         })
-        return NextResponse.json({ ok: true, status: connectionStatus })
+        return NextResponse.json({ ok: true, status: connectionStatus, killed: killResults })
       } catch (e: any) {
         return NextResponse.json({ error: String(e) }, { status: 500 })
       }

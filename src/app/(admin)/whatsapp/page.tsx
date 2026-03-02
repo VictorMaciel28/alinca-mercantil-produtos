@@ -7,17 +7,32 @@ export default function WhatsAppPage() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [status, setStatus] = useState('DISCONNECTED')
   const [error, setError] = useState<string | null>(null)
+  const [isDisconnecting, setIsDisconnecting] = useState(false)
+  const [disconnectResult, setDisconnectResult] = useState<any | null>(null)
 
   useEffect(() => {
     let mounted = true
+    let id: any = null
     async function fetchQr() {
       try {
         const res = await fetch('/api/whatsapp')
         const json = await res.json()
         if (!mounted) return
+        // if server says unsupported (serverless), stop polling and show message
+        if (json?.diagnostics?.supported === false) {
+          setStatus('UNSUPPORTED')
+          setError('Ambiente não suportado para executar o client WhatsApp aqui. Use um servidor dedicado.')
+          if (id) {
+            clearInterval(id)
+          }
+          return
+        }
         setStatus(json.status)
         setQrDataUrl(json.qr)
         setError(null)
+        if (json.status === 'CONNECTED' && id) {
+          clearInterval(id)
+        }
       } catch (err) {
         console.error(err)
         if (!mounted) return
@@ -26,11 +41,11 @@ export default function WhatsAppPage() {
     }
 
     fetchQr()
-    const id = setInterval(fetchQr, 2000)
+    id = setInterval(fetchQr, 2000)
     if (typeof window !== 'undefined') (window as any).__waPollRef = id
     return () => {
       mounted = false
-      clearInterval(id)
+      if (id) clearInterval(id)
     }
   }, [])
 
@@ -57,23 +72,33 @@ export default function WhatsAppPage() {
   }, [])
 
   const handleDisconnect = useCallback(async () => {
+    setIsDisconnecting(true)
+    setDisconnectResult(null)
     try {
       const res = await fetch('/api/whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'disconnect' }),
       })
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
+      setDisconnectResult(json)
       if (json?.ok) {
         setStatus('DISCONNECTED')
         setQrDataUrl(null)
-        alert('Desconectado.')
+        // show detailed result if there is killed info
+        if (json.killed) {
+          alert('Desconectado. Resultado: ' + JSON.stringify(json.killed))
+        } else {
+          alert('Desconectado.')
+        }
       } else {
         alert('Falha ao desconectar: ' + JSON.stringify(json))
       }
     } catch (err) {
       console.error(err)
       alert('Erro ao desconectar.')
+    } finally {
+      setIsDisconnecting(false)
     }
   }, [])
 
@@ -104,10 +129,15 @@ export default function WhatsAppPage() {
         <Button variant="success" onClick={handleTest} disabled={status !== 'CONNECTED'}>
           Testar
         </Button>
-        <Button variant="danger" onClick={handleDisconnect} disabled={status === 'DISCONNECTED'}>
-          Desconectar
+        <Button variant="danger" onClick={handleDisconnect} disabled={isDisconnecting}>
+          {isDisconnecting ? 'Desconectando...' : 'Desconectar'}
         </Button>
       </div>
+      {disconnectResult && (
+        <pre style={{ marginTop: 8, maxWidth: 500, overflow: 'auto' }}>
+          {JSON.stringify(disconnectResult, null, 2)}
+        </pre>
+      )}
     </div>
   )
 }
