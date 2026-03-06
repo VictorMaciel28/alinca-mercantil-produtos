@@ -214,6 +214,7 @@
      padding: calc($spacer * 1) calc($spacer * 0.5) $footer-height calc($spacer * 0.5);
      margin-left: $main-nav-width;
      border-right: 10px solid $main-nav-bg;
+     background-color: var(--#{$prefix}body-bg);
 }
 
 

@@ -60,13 +60,35 @@ export const MENU_ITEMS: MenuItemType[] = [
         url: '/televendas',
         parentKey: 'administracao',
       },
+      
+      {
+        key: 'condicoes-pagamento',
+        label: 'Condições de pagamento',
+        icon: 'ri:time-line',
+        url: '/condicoes-pagamento',
+        parentKey: 'administracao',
+      },
     ],
   },
+  // {
+  //   key: 'whatsapp',
+  //   label: 'WhatsApp',
+  //   icon: 'ri:whatsapp-line',
+  //   url: '/whatsapp',
+  // },
   {
-    key: 'whatsapp',
-    label: 'WhatsApp',
-    icon: 'ri:whatsapp-line',
-    url: '/whatsapp',
+    key: 'suprimentos',
+    label: 'Suprimentos',
+    icon: 'ri:archive-line',
+    children: [
+      {
+        key: 'notas-fiscais',
+        label: 'Notas Fiscais',
+        icon: 'ri:file-text-line',
+        url: '/suprimentos/notas-fiscais',
+        parentKey: 'suprimentos',
+      },
+    ],
   },
   {
     key: 'comissoes',

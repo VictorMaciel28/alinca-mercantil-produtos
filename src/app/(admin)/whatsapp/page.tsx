@@ -12,40 +12,48 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     let mounted = true
-    let id: any = null
-    async function fetchQr() {
+    let es: EventSource | null = null
+    async function startEvents() {
       try {
-        const res = await fetch('/api/whatsapp')
-        const json = await res.json()
-        if (!mounted) return
-        // if server says unsupported (serverless), stop polling and show message
-        if (json?.diagnostics?.supported === false) {
-          setStatus('UNSUPPORTED')
-          setError('Ambiente não suportado para executar o client WhatsApp aqui. Use um servidor dedicado.')
-          if (id) {
-            clearInterval(id)
+        es = new EventSource('/api/whatsapp/events')
+        es.addEventListener('state', (e: MessageEvent) => {
+          if (!mounted) return
+          try {
+            const data = JSON.parse(e.data)
+            setStatus(data.status)
+            setQrDataUrl(data.qr ?? null)
+            setError(null)
+            if (data.status === 'UNSUPPORTED') {
+              setError('Ambiente não suportado para executar o client WhatsApp aqui. Use um servidor dedicado.')
+            }
+          } catch (err) {
+            console.error('parse state', err)
           }
-          return
-        }
-        setStatus(json.status)
-        setQrDataUrl(json.qr)
-        setError(null)
-        if (json.status === 'CONNECTED' && id) {
-          clearInterval(id)
+        })
+        es.addEventListener('qr', (e: MessageEvent) => {
+          if (!mounted) return
+          try {
+            const data = JSON.parse(e.data)
+            setQrDataUrl(data.qr ?? null)
+            setError(null)
+          } catch (err) {
+            console.error('parse qr', err)
+          }
+        })
+        es.onerror = (ev) => {
+          console.error('EventSource error', ev)
+          setError('Erro de conexão de eventos. Tentando reconectar...')
         }
       } catch (err) {
         console.error(err)
-        if (!mounted) return
         setError(String(err))
       }
     }
 
-    fetchQr()
-    id = setInterval(fetchQr, 2000)
-    if (typeof window !== 'undefined') (window as any).__waPollRef = id
+    startEvents()
     return () => {
       mounted = false
-      if (id) clearInterval(id)
+      if (es) es.close()
     }
   }, [])
 

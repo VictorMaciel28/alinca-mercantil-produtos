@@ -479,3 +479,11 @@ model user_branch {
   id_user   Int
   id_branch Int
 }
+
+// Payment conditions for orders (configured by admin)
+model payment_condition {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(100) // e.g. "14/21D"
+  percent    Decimal  @db.Decimal(5, 2) // administrative additional percent (e.g. 3.00)
+  created_at DateTime @default(now()) @db.DateTime(0)
+}

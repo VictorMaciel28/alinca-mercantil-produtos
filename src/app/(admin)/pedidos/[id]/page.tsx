@@ -465,68 +465,37 @@ export default function PedidoFormPage() {
     return tot < 0 ? 0 : tot
   }, [subtotal, descontoPercent, descontoHabilitado])
 
-  const condicoesBoleto = [
-    '14 D',
-    '14/21/28/35/42/49/56/63/70/77/84/91D',
-    '14/21/28/35/42/49/56/63/70/77D',
-    '14/21/28/35/42/49/56/63/70D',
-    '14/21/28/35/42/49/56/63D',
-    '14/21/28/35/42/49/56D',
-    '14/21/28/35/42/49D',
-    '14/21/28/35/42D',
-    '14/21/28/35D',
-    '14/21/28D',
-    '14/21D',
+  // Payment conditions are loaded from server (payment_condition table).
+  const [paymentConditions, setPaymentConditions] = useState<{ id: number; name: string; percent: number }[]>([])
 
-    '21/28/35/42/49D',
-    '21/28/35/42D',
-    '21/28/35D',
-    '21/28D',
-    '21D',
-    '28/35/42/49/56/63/70',
-    '28/35/42/49/56/63/70/77/84D',
-    '28/35/42/49/56/63/70/77D',
-    '28/35/42/49/56/63D',
-    '28/35/42/49/56D',
-    '28/35/42/49D',
-    '28/35/42D',
-    '28/35D',
-    '28/42D',
-
-    '28/49D',
-    '28/56D',
-    '28D',
-    '30/40/50/60/70/80/90/100/110/120D',
-    '30/40/50/60/70/80/90/100D',
-    '30/40/50/60/70/80D',
-    '30/40/50/60/70D',
-    '30/40/50/60D',
-    '30/40/50D',
-    '30/40D',
-    '30/45/60/75/90/105/120 D',
-    '30/45/60/75/90D',
-    '30/45/60/75D',
-
-    '30/45/60D',
-    '30/60/80D',
-    '30/60/90/120D',
-    '30/60/90D',
-    '30/70/100D',
-    '30/70D',
-    '30/75/120 D',
-    '30D',
-    '40/50/60/70/80/90/100/110/120/130/140/150D',
-    '40/50/60/70/80/90/100D',
-    '40/70/100D',
-    '40/90/130/150D',
-    '45/60/75/90/105/120/135D',
-    '45/60/75D',
-  ]
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/condicoes-pagamento')
+        const json = await res.json()
+        if (mounted && json?.ok && Array.isArray(json.data)) {
+          setPaymentConditions(
+            json.data.map((r: any) => ({
+              id: Number(r.id),
+              name: String(r.name),
+              percent: Number(r.percent || 0),
+            }))
+          )
+        }
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const condicoesPagamentoOptions = useMemo(() => {
-    if (formaRecebimento === 'Boleto') return condicoesBoleto
+    if (formaRecebimento === 'Boleto') return paymentConditions.map((c) => c.name)
     return ['À vista']
-  }, [formaRecebimento])
+  }, [formaRecebimento, paymentConditions])
 
   const diasParcelas: number[] = useMemo(() => {
     if (formaRecebimento !== 'Boleto') return []
@@ -550,6 +519,10 @@ export default function PedidoFormPage() {
 
   const markupPct = useMemo(() => {
     if (formaRecebimento !== 'Boleto') return 0
+    // Prefer configured percentage from DB
+    const cfg = paymentConditions.find((c) => c.name === condicaoPagamento)
+    if (cfg) return Number(cfg.percent) / 100
+    // Fallback: derive from first day
     let firstDay: number | null = null
     if (diasParcelas && diasParcelas.length > 0) firstDay = diasParcelas[0]
     if (firstDay == null || Number.isNaN(firstDay)) {
@@ -560,7 +533,7 @@ export default function PedidoFormPage() {
     if (firstDay < 30) return 0.02
     if (firstDay >= 30 && firstDay < 40) return 0.03
     return 0.04
-  }, [formaRecebimento, diasParcelas, condicaoPagamento])
+  }, [formaRecebimento, diasParcelas, condicaoPagamento, paymentConditions])
 
   // Validação: valor mínimo da parcela para Boleto
   const pagamentoParceladoErro = useMemo(() => {
@@ -708,7 +681,6 @@ export default function PedidoFormPage() {
 
       {/* Sessão 1 - Cliente e Vendedor */}
       <Card className="border-0 shadow-sm mb-3">
-        <Card.Header className="bg-white fw-semibold">Dados do cliente</Card.Header>
         <Card.Body>
           <Row className="g-3 align-items-end">
             <Col lg={4}>
@@ -777,12 +749,9 @@ export default function PedidoFormPage() {
       {/* Sessão 2 - Produtos */} 
       {condicaoPagamento && (
         <Card className="border-0 shadow-sm mb-3">
-          <Card.Header className="bg-white d-flex justify-content-between align-items-center">
-            <div className="fw-semibold">Produtos</div>
-          </Card.Header>
           <Card.Body>
           <div className="mb-3">
-            <Form.Label className="fw-semibold">Busca de produtos </Form.Label>
+            <Form.Label className="fw-semibold">Adicionar produtos </Form.Label>
             <Form.Control
               type="text"
               placeholder="Digite código SKU ou nome do produto"

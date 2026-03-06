@@ -10,9 +10,7 @@
     "format": "prettier --write 'src/**/*.{ts,tsx,js,jsx}'"
   },
   "dependencies": {
-    "qrcode": "^1.5.1",
-    "whatsapp-web.js": "^1.19.3",
-    "nodemailer": "^6.9.3",
+    "@adiwajshing/baileys": "^5.0.0",
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@fullcalendar/bootstrap": "^6.1.15",
@@ -28,6 +26,7 @@
     "apexcharts": "^3.52.0",
     "bcryptjs": "^3.0.2",
     "bootstrap": "^5.3.3",
+    "bufferutil": "^4.1.0",
     "choices.js": "^10.2.0",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.13",
@@ -42,7 +41,9 @@
     "next-auth": "^4.24.7",
     "next-i18next": "^15.4.2",
     "nextjs-toploader": "^1.6.12",
+    "nodemailer": "^6.9.3",
     "nouislider-react": "^3.4.2",
+    "qrcode": "^1.5.1",
     "react": "^18.3.1",
     "react-apexcharts": "^1.4.1",
     "react-bootstrap": "^2.10.4",
@@ -60,7 +61,10 @@
     "sharp": "^0.34.5",
     "simplebar-react": "^3.2.6",
     "swiper": "^11.1.11",
+    "utf-8-validate": "^6.0.6",
+    "whatsapp-web.js": "^1.19.3",
     "wordpress-hash-node": "^1.0.0",
+    "ws": "8.19.0",
     "yup": "^1.4.0"
   },
   "devDependencies": {

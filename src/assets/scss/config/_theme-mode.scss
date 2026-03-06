@@ -20,7 +20,14 @@
     --#{$prefix}footer-height:                 60px;
     
     --#{$prefix}input-border-color:             #d8dfe7;
-    --#{$prefix}input-focus-border-color:       #b0b0bb;
+    --#{$prefix}input-focus-border-color:       #a4a4ac;
+}
+/* Slightly darker body background for admin pages in light mode
+   Helps components stand out against the page background */
+html[data-bs-theme="light"] .wrapper,
+html[data-bs-theme="light"] .page-content {
+    --#{$prefix}body-bg: #f0f0f0;
+    --#{$prefix}body-bg-rgb: #{to-rgb(#f2f4f8)};
 }
 
 
