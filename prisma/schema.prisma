@@ -487,3 +487,19 @@ model payment_condition {
   percent    Decimal  @db.Decimal(5, 2) // administrative additional percent (e.g. 3.00)
   created_at DateTime @default(now()) @db.DateTime(0)
 }
+
+model webhook_log {
+  id           Int      @id @default(autoincrement())
+  endpoint     String   @db.VarChar(255)
+  method       String   @db.VarChar(10)
+  headers      String?  @db.LongText
+  body         String?  @db.LongText
+  ip_address   String?  @db.VarChar(45)
+  user_agent   String?  @db.VarChar(512)
+  device       String?  @db.VarChar(100)
+  query_params String?  @db.Text
+  received_at  DateTime @default(now()) @db.DateTime(0)
+
+  @@index([received_at], map: "idx_webhook_log_received_at")
+  @@index([method], map: "idx_webhook_log_method")
+}
