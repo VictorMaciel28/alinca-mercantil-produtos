@@ -1,12 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 // @ts-ignore
 import nodemailer from 'nodemailer'
+import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
+
+function detectDevice(userAgent: string) {
+  const ua = userAgent.toLowerCase()
+  if (!ua) return 'unknown'
+  if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) return 'mobile'
+  if (ua.includes('ipad') || ua.includes('tablet')) return 'tablet'
+  if (ua.includes('postman') || ua.includes('insomnia') || ua.includes('curl') || ua.includes('httpie')) {
+    return 'api-client'
+  }
+  if (ua.includes('bot') || ua.includes('crawler') || ua.includes('spider')) return 'bot'
+  return 'desktop'
+}
+
+async function logWebhook(req: NextRequest, rawBody: string) {
+  const headers = Object.fromEntries(req.headers.entries())
+  const userAgent = req.headers.get('user-agent') ?? null
+  const ipAddress =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    req.headers.get('x-real-ip') ??
+    req.headers.get('cf-connecting-ip') ??
+    null
+  const endpoint = req.nextUrl.pathname
+  const queryParams = req.nextUrl.searchParams.toString() || null
+  const method = req.method.toUpperCase()
+  const device = detectDevice(userAgent ?? '')
+
+  await prisma.$executeRaw`
+    INSERT INTO webhook_log (
+      endpoint, method, headers, body, ip_address, user_agent, device, query_params, received_at
+    ) VALUES (
+      ${endpoint},
+      ${method},
+      ${JSON.stringify(headers)},
+      ${rawBody || null},
+      ${ipAddress},
+      ${userAgent},
+      ${device},
+      ${queryParams},
+      NOW()
+    )
+  `
+}
 
 export async function POST(req: NextRequest) {
   const raw = await req.text()
   let json: any = null
+
+  try {
+    await logWebhook(req, raw)
+  } catch (e) {
+    // Keep webhook flow resilient even if log insert fails.
+  }
 
   try {
     json = JSON.parse(raw)
