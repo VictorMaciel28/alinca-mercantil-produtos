@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 
-export function middleware(request: NextRequest) {
-  const response = NextResponse.next()
+export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname !== '/') {
+    return NextResponse.next()
+  }
 
-  // A rota "/" será tratada pela página page.tsx
-  return response
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET || 'kvwLrfri/MBznUCofIoRH9+NvGu6GqvVdqO3mor1GuA=' })
+  if (token) {
+    return NextResponse.redirect(new URL('/pedidos', request.url))
+  }
+
+  return NextResponse.next()
 }
 
-// See "Matching Paths" below to learn more
 export const config = {
-  matcher: '/',
+  matcher: ['/'],
 }
-
-export { default } from 'next-auth/middleware'
