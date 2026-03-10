@@ -83,11 +83,70 @@ export default function PedidoFormPage() {
   const debounceTimers = useRef<Record<number, any>>({})
 
   // Sugestões de clientes + papel do usuário
-  type ClientSuggestion = { id: number; nome: string; cpf_cnpj?: string; id_vendedor_externo?: string | null; nome_vendedor?: string | null; cidade?: string | null }
+  type ClientSuggestion = {
+    id: number
+    external_id?: string | null
+    nome: string
+    cpf_cnpj?: string
+    id_vendedor_externo?: string | null
+    nome_vendedor?: string | null
+    cidade?: string | null
+    endereco?: string | null
+    numero?: string | null
+    complemento?: string | null
+    bairro?: string | null
+    cep?: string | null
+    uf?: string | null
+    fone?: string | null
+    email?: string | null
+  }
   const [clientSuggestions, setClientSuggestions] = useState<ClientSuggestion[]>([])
   const [showClientSuggest, setShowClientSuggest] = useState<boolean>(false)
   const clientDebounceRef = useRef<any>(null)
   const [selectedClient, setSelectedClient] = useState<ClientSuggestion | null>(null)
+  const [showContactAccordion, setShowContactAccordion] = useState(false)
+  const [contactMode, setContactMode] = useState<'new' | 'existing'>('new')
+  const [isSavingContact, setIsSavingContact] = useState(false)
+  const [isLoadingContactInfo, setIsLoadingContactInfo] = useState(false)
+  const [contactResponse, setContactResponse] = useState<any>(null)
+  const [showContactResultModal, setShowContactResultModal] = useState(false)
+  const [contactFormErrors, setContactFormErrors] = useState<Record<string, string>>({})
+  const [isDifferentDeliveryAddress, setIsDifferentDeliveryAddress] = useState(false)
+  const [deliveryAddress, setDeliveryAddress] = useState({
+    endereco: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    cep: '',
+    cidade: '',
+    uf: '',
+  })
+  const [contactForm, setContactForm] = useState({
+    codigo: '',
+    nome: '',
+    tipo_pessoa: 'J',
+    cpf_cnpj: '',
+    ie: '',
+    rg: '',
+    im: '',
+    endereco: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    cep: '',
+    cidade: '',
+    uf: '',
+    pais: '',
+    contatos: '',
+    fone: '',
+    fax: '',
+    celular: '',
+    email: '',
+    id_vendedor: '',
+    situacao: 'A',
+    obs: '',
+    contribuinte: '1',
+  })
   const [meVendedor, setMeVendedor] = useState<{
     tipo?: 'VENDEDOR' | 'TELEVENDAS' | null
     id_vendedor_externo?: string | null
@@ -121,6 +180,31 @@ export default function PedidoFormPage() {
   }
 
   const onlyDigits = (s: string) => (s || '').replace(/\D/g, '')
+  const maskCpfCnpj = (value: string) => {
+    const digits = onlyDigits(value).slice(0, 14)
+    if (digits.length <= 11) {
+      return digits
+        .replace(/^(\d{3})(\d)/, '$1.$2')
+        .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+        .replace(/\.(\d{3})(\d)/, '.$1-$2')
+    }
+    return digits
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d)/, '$1-$2')
+  }
+  const maskPhone = (value: string) => {
+    const digits = onlyDigits(value).slice(0, 11)
+    if (digits.length <= 10) {
+      return digits
+        .replace(/^(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{4})(\d)/, '$1-$2')
+    }
+    return digits
+      .replace(/^(\d{2})(\d)/, '($1) $2')
+      .replace(/(\d{5})(\d)/, '$1-$2')
+  }
 
   const addItem = () => {
     setItens((arr) => {
@@ -312,11 +396,18 @@ export default function PedidoFormPage() {
           console.debug('clientes search res', res.status, data)
           const options: ClientSuggestion[] = (data?.data || []).map((c: any) => ({
             id: Number(c?.id ?? 0),
+            external_id: c?.external_id != null ? String(c.external_id) : (c?.id != null ? String(c.id) : null),
             nome: c?.nome || '',
             cpf_cnpj: c?.cpf_cnpj || '',
             id_vendedor_externo: c?.id_vendedor_externo ?? null,
             nome_vendedor: c?.nome_vendedor ?? null,
             cidade: c?.cidade ?? null,
+            endereco: c?.endereco ?? null,
+            numero: c?.numero ?? null,
+            complemento: c?.complemento ?? null,
+            bairro: c?.bairro ?? null,
+            cep: c?.cep ?? null,
+            uf: c?.uf ?? null,
           })).filter((c: ClientSuggestion) => !!c.nome)
           setClientSuggestions(options)
           setShowClientSuggest(options.length > 0)
@@ -335,7 +426,178 @@ export default function PedidoFormPage() {
   const selectCliente = (opt: ClientSuggestion) => {
     setForm((f) => ({ ...f, cliente: opt.nome, cnpj: opt.cpf_cnpj || '' }))
     setSelectedClient(opt)
+    setIsDifferentDeliveryAddress(false)
+    setDeliveryAddress({
+      endereco: opt.endereco || '',
+      numero: opt.numero || '',
+      complemento: opt.complemento || '',
+      bairro: opt.bairro || '',
+      cep: opt.cep || '',
+      cidade: opt.cidade || '',
+      uf: opt.uf || '',
+    })
     setShowClientSuggest(false)
+  }
+
+  const openNewContact = () => {
+    setContactMode('new')
+    setContactFormErrors({})
+    setContactForm({
+      codigo: '',
+      nome: form.cliente || '',
+      tipo_pessoa: 'J',
+      cpf_cnpj: form.cnpj || '',
+      ie: '',
+      rg: '',
+      im: '',
+      endereco: '',
+      numero: '',
+      complemento: '',
+      bairro: '',
+      cep: '',
+      cidade: '',
+      uf: '',
+      pais: '',
+      contatos: '',
+      fone: '',
+      fax: '',
+      celular: '',
+      email: '',
+      id_vendedor: meVendedor?.id_vendedor_externo || '',
+      situacao: 'A',
+      obs: '',
+      contribuinte: '1',
+    })
+    setShowContactAccordion(true)
+  }
+
+  const openExistingContactInfo = async () => {
+    if (!selectedClient) return
+    setContactMode('existing')
+    setContactFormErrors({})
+    setShowContactAccordion(true)
+    setIsLoadingContactInfo(true)
+    try {
+      const tinyContactId = selectedClient.external_id || String(selectedClient.id)
+      const res = await fetch(`/api/clientes/obter?id=${encodeURIComponent(String(tinyContactId))}`)
+      const data = await res.json().catch(() => null)
+      const tinyContato = data?.retorno?.contato
+      if (!tinyContato) {
+        setContactResponse(data ?? { erro: 'Contato não localizado no Tiny' })
+        setShowContactResultModal(true)
+        return
+      }
+      setContactForm({
+        codigo: tinyContato?.codigo || '',
+        nome: tinyContato?.nome || selectedClient.nome || '',
+        tipo_pessoa: tinyContato?.tipo_pessoa || (onlyDigits(selectedClient.cpf_cnpj || '').length === 11 ? 'F' : 'J'),
+        cpf_cnpj: tinyContato?.cpf_cnpj || selectedClient.cpf_cnpj || '',
+        ie: tinyContato?.ie || '',
+        rg: tinyContato?.rg || '',
+        im: tinyContato?.im || '',
+        endereco: tinyContato?.endereco || '',
+        numero: tinyContato?.numero || '',
+        complemento: tinyContato?.complemento || '',
+        bairro: tinyContato?.bairro || '',
+        cep: tinyContato?.cep || '',
+        cidade: tinyContato?.cidade || '',
+        uf: tinyContato?.uf || '',
+        pais: tinyContato?.pais || '',
+        contatos: tinyContato?.contatos || tinyContato?.nome || '',
+        fone: tinyContato?.fone || '',
+        fax: tinyContato?.fax || '',
+        celular: tinyContato?.celular || '',
+        email: tinyContato?.email || '',
+        id_vendedor: selectedClient.id_vendedor_externo || meVendedor?.id_vendedor_externo || '',
+        situacao: tinyContato?.situacao || 'A',
+        obs: tinyContato?.obs || '',
+        contribuinte: tinyContato?.contribuinte || '1',
+      })
+      setIsDifferentDeliveryAddress(false)
+      setDeliveryAddress({
+        endereco: tinyContato?.endereco || '',
+        numero: tinyContato?.numero || '',
+        complemento: tinyContato?.complemento || '',
+        bairro: tinyContato?.bairro || '',
+        cep: tinyContato?.cep || '',
+        cidade: tinyContato?.cidade || '',
+        uf: tinyContato?.uf || '',
+      })
+    } catch {
+      setContactResponse({ erro: 'Falha ao carregar informações do contato' })
+      setShowContactResultModal(true)
+    } finally {
+      setIsLoadingContactInfo(false)
+    }
+  }
+
+  const saveContact = async () => {
+    const errors: Record<string, string> = {}
+    if (!contactForm.nome.trim()) errors.nome = 'Nome é obrigatório'
+    if (onlyDigits(contactForm.cpf_cnpj).length < 11) errors.cpf_cnpj = 'CPF/CNPJ é obrigatório'
+    if (!contactForm.email.trim()) errors.email = 'Email é obrigatório'
+    if (onlyDigits(contactForm.fone).length < 10) errors.fone = 'Telefone é obrigatório'
+    if (!/^\d+$/.test((contactForm.ie || '').trim())) errors.ie = 'Inscrição Estadual deve conter apenas números'
+
+    setContactFormErrors(errors)
+    if (Object.keys(errors).length > 0) {
+      return
+    }
+
+    setIsSavingContact(true)
+    try {
+      const payloadContato: any = {
+        ...contactForm,
+        tipo_pessoa: 'J',
+        situacao: 'A',
+      }
+      const endpoint = contactMode === 'existing' ? '/api/clientes/alterar' : '/api/clientes/incluir'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contato: payloadContato }),
+      })
+      const data = await res.json().catch(() => ({ erro: 'Resposta inválida' }))
+      setContactResponse(data)
+      setShowContactResultModal(true)
+
+      const status = String(data?.retorno?.status || '').toUpperCase()
+      const registros = data?.retorno?.registros || []
+      const allOk = status === 'OK' && Array.isArray(registros) && registros.length > 0 && registros.every((r: any) => String(r?.registro?.status || '').toUpperCase() === 'OK')
+      if (allOk || status === 'OK') {
+        setShowContactAccordion(false)
+      }
+    } catch (e: any) {
+      setContactResponse({ erro: 'Falha ao salvar contato' })
+      setShowContactResultModal(true)
+    } finally {
+      setIsSavingContact(false)
+    }
+  }
+
+  const extractTinyContactErrors = (resp: any): string[] => {
+    const messages: string[] = []
+    const topErrors = resp?.retorno?.erros
+    if (Array.isArray(topErrors)) {
+      for (const item of topErrors) {
+        const msg = item?.erro
+        if (typeof msg === 'string' && msg.trim()) messages.push(msg.trim())
+      }
+    }
+
+    const registros = resp?.retorno?.registros
+    if (Array.isArray(registros)) {
+      for (const entry of registros) {
+        const regErrors = entry?.registro?.erros
+        if (!Array.isArray(regErrors)) continue
+        for (const err of regErrors) {
+          const msg = err?.erro
+          if (typeof msg === 'string' && msg.trim()) messages.push(msg.trim())
+        }
+      }
+    }
+
+    return Array.from(new Set(messages))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -387,6 +649,10 @@ export default function PedidoFormPage() {
             preco: it.preco,
           }))
         }
+        payloadProposal.endereco_entrega = {
+          ...deliveryAddress,
+          endereco_diferente: isDifferentDeliveryAddress,
+        }
         const numero = await createProposta(payloadProposal as any)
         router.push('/propostas')
         return
@@ -404,6 +670,10 @@ export default function PedidoFormPage() {
           ? { nome: String(form.cliente || '').trim(), cpf_cnpj: String(form.cnpj || '').trim() }
           : { ...(payloadToSend.cliente || {}), cpf_cnpj: String(form.cnpj || '').trim(), nome: payloadToSend.cliente.nome || String(form.cliente || '').trim() }
       delete payloadToSend.cnpj
+      payloadToSend.endereco_entrega = {
+        ...deliveryAddress,
+        endereco_diferente: isDifferentDeliveryAddress,
+      }
       // Map local itens to Tiny documentation format:
       // pedido.itens = [ { item: { codigo, descricao, unidade, quantidade, valor_unitario } }, ... ]
       if (itens && itens.length > 0) {
@@ -743,6 +1013,79 @@ export default function PedidoFormPage() {
             </Col>
             {/* removed extra placeholder column */}
           </Row>
+          <Row className="mt-2">
+            <Col lg={4}>
+              <div className="d-flex gap-3">
+                <Button variant="link" className="p-0 text-primary" style={{ textDecoration: 'underline' }} onClick={openNewContact}>
+                  Novo cliente
+                </Button>
+                {selectedClient && (
+                  <Button
+                    variant="link"
+                    className="p-0 text-primary"
+                    style={{ textDecoration: 'underline' }}
+                    onClick={openExistingContactInfo}
+                    disabled={isLoadingContactInfo}
+                  >
+                    Dados do cliente
+                  </Button>
+                )}
+              </div>
+            </Col>
+          </Row>
+          {showContactAccordion && (
+            <div className="mt-3 border rounded p-3 bg-light">
+              <div className="fw-semibold mb-3">{contactMode === 'new' ? 'Criar contato' : 'Informações sobre o cliente'}</div>
+              <Row className="g-3">
+                <Col md={6}>
+                  <Form.Label>Nome</Form.Label>
+                  <Form.Control value={contactForm.nome} onChange={(e) => { setContactForm((s) => ({ ...s, nome: e.target.value })); setContactFormErrors((err) => ({ ...err, nome: '' })) }} />
+                  {contactFormErrors.nome && <div className="text-danger small mt-1">{contactFormErrors.nome}</div>}
+                </Col>
+                <Col md={3}>
+                  <Form.Label>CPF/CNPJ</Form.Label>
+                  <Form.Control value={contactForm.cpf_cnpj} onChange={(e) => { setContactForm((s) => ({ ...s, cpf_cnpj: maskCpfCnpj(e.target.value) })); setContactFormErrors((err) => ({ ...err, cpf_cnpj: '' })) }} />
+                  {contactFormErrors.cpf_cnpj && <div className="text-danger small mt-1">{contactFormErrors.cpf_cnpj}</div>}
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Inscrição Estadual</Form.Label>
+                  <Form.Control value={contactForm.ie} onChange={(e) => { setContactForm((s) => ({ ...s, ie: e.target.value })); setContactFormErrors((err) => ({ ...err, ie: '' })) }} />
+                  {contactFormErrors.ie && <div className="text-danger small mt-1">{contactFormErrors.ie}</div>}
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Contribuinte</Form.Label>
+                  <Form.Select value={contactForm.contribuinte} onChange={(e) => setContactForm((s) => ({ ...s, contribuinte: e.target.value }))}>
+                    <option value="1">Sim</option>
+                    <option value="0">Não</option>
+                  </Form.Select>
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Contato</Form.Label>
+                  <Form.Control value={contactForm.contatos} onChange={(e) => setContactForm((s) => ({ ...s, contatos: e.target.value }))} />
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Telefone</Form.Label>
+                  <Form.Control value={contactForm.fone} onChange={(e) => { setContactForm((s) => ({ ...s, fone: maskPhone(e.target.value) })); setContactFormErrors((err) => ({ ...err, fone: '' })) }} />
+                  {contactFormErrors.fone && <div className="text-danger small mt-1">{contactFormErrors.fone}</div>}
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Email</Form.Label>
+                  <Form.Control value={contactForm.email} onChange={(e) => { setContactForm((s) => ({ ...s, email: e.target.value })); setContactFormErrors((err) => ({ ...err, email: '' })) }} />
+                  {contactFormErrors.email && <div className="text-danger small mt-1">{contactFormErrors.email}</div>}
+                </Col>
+                <Col md={12}>
+                  <Form.Label>Observações</Form.Label>
+                  <Form.Control as="textarea" rows={2} value={contactForm.obs} readOnly />
+                </Col>
+              </Row>
+              <div className="d-flex justify-content-end gap-2 mt-3">
+                <Button variant="secondary" onClick={() => setShowContactAccordion(false)}>Cancelar</Button>
+                <Button variant="primary" onClick={saveContact} disabled={isSavingContact}>
+                  {isSavingContact ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          )}
         </Card.Body>
       </Card>
 
@@ -900,6 +1243,76 @@ export default function PedidoFormPage() {
                 )}
               </div>
             )}
+
+            <div className="mt-3 border rounded p-3">
+              <div className="fw-semibold mb-2">Endereço de entrega</div>
+              <Form.Check
+                id="endereco-diferente-entrega"
+                type="checkbox"
+                label="Informar endereço diferente para entrega"
+                checked={isDifferentDeliveryAddress}
+                onChange={(e) => setIsDifferentDeliveryAddress(e.target.checked)}
+                className="mb-3"
+              />
+              <Row className="g-2">
+                <Col md={5}>
+                  <Form.Label>Endereço</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.endereco}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, endereco: e.target.value }))}
+                  />
+                </Col>
+                <Col md={2}>
+                  <Form.Label>Número</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.numero}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, numero: e.target.value }))}
+                  />
+                </Col>
+                <Col md={5}>
+                  <Form.Label>Complemento</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.complemento}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, complemento: e.target.value }))}
+                  />
+                </Col>
+                <Col md={4}>
+                  <Form.Label>Bairro</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.bairro}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, bairro: e.target.value }))}
+                  />
+                </Col>
+                <Col md={3}>
+                  <Form.Label>CEP</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.cep}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, cep: e.target.value }))}
+                  />
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Cidade</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.cidade}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, cidade: e.target.value }))}
+                  />
+                </Col>
+                <Col md={2}>
+                  <Form.Label>UF</Form.Label>
+                  <Form.Control
+                    value={deliveryAddress.uf}
+                    disabled={!isDifferentDeliveryAddress}
+                    onChange={(e) => setDeliveryAddress((s) => ({ ...s, uf: e.target.value }))}
+                  />
+                </Col>
+              </Row>
+            </div>
 
             <div className="d-flex gap-2 mt-4">
               <Button
@@ -1256,6 +1669,36 @@ export default function PedidoFormPage() {
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={closeHistory}>Fechar</Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showContactResultModal} onHide={() => setShowContactResultModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Resultado do contato</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {String(contactResponse?.retorno?.status || '').toUpperCase() === 'ERRO' && (
+            <div className="mb-3">
+              <div className="fw-semibold text-danger mb-2">Erros encontrados</div>
+              <ul className="mb-0">
+                {extractTinyContactErrors(contactResponse).map((msg, idx) => (
+                  <li key={`${msg}-${idx}`} className="text-danger">{msg}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {String(contactResponse?.retorno?.status || '').toUpperCase() === 'OK' && (
+            <div className="text-success">Contato salvo com sucesso.</div>
+          )}
+          {!contactResponse?.retorno && !contactResponse?.erro && (
+            <div className="text-muted">Sem detalhes para exibir.</div>
+          )}
+          {contactResponse?.erro && (
+            <div className="text-danger">{String(contactResponse.erro)}</div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowContactResultModal(false)}>Fechar</Button>
         </Modal.Footer>
       </Modal>
     </>
