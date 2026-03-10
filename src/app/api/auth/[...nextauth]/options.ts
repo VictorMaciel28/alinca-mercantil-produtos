@@ -97,11 +97,11 @@ export const options: NextAuthOptions = {
   session: {
     strategy: 'jwt',
     // Keep user logged in for 15 days
-    maxAge: 15 * 24 * 60 * 60,
-    updateAge: 24 * 60 * 60,
+    maxAge: 10 * 365 * 24 * 60 * 60,
+    updateAge: 10 * 365 * 24 * 60 * 60,
     generateSessionToken: () => randomBytes(32).toString('hex'),
   },
   jwt: {
-    maxAge: 15 * 24 * 60 * 60,
+    maxAge: 10 * 365 * 24 * 60 * 60,
   },
 };
