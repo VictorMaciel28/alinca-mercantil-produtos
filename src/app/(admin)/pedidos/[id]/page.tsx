@@ -442,11 +442,25 @@ export default function PedidoFormPage() {
   const openNewContact = () => {
     setContactMode('new')
     setContactFormErrors({})
+    setForm((f) => ({ ...f, cliente: '', cnpj: '' }))
+    setSelectedClient(null)
+    setShowClientSuggest(false)
+    setClientSuggestions([])
+    setIsDifferentDeliveryAddress(false)
+    setDeliveryAddress({
+      endereco: '',
+      numero: '',
+      complemento: '',
+      bairro: '',
+      cep: '',
+      cidade: '',
+      uf: '',
+    })
     setContactForm({
       codigo: '',
-      nome: form.cliente || '',
+      nome: '',
       tipo_pessoa: 'J',
-      cpf_cnpj: form.cnpj || '',
+      cpf_cnpj: '',
       ie: '',
       rg: '',
       im: '',
@@ -565,6 +579,25 @@ export default function PedidoFormPage() {
       const registros = data?.retorno?.registros || []
       const allOk = status === 'OK' && Array.isArray(registros) && registros.length > 0 && registros.every((r: any) => String(r?.registro?.status || '').toUpperCase() === 'OK')
       if (allOk || status === 'OK') {
+        const createdId = registros?.[0]?.registro?.id ? String(registros[0].registro.id) : null
+        setForm((f) => ({ ...f, cliente: contactForm.nome, cnpj: contactForm.cpf_cnpj }))
+        setSelectedClient({
+          id: createdId ? Number(createdId) : 0,
+          external_id: createdId,
+          nome: contactForm.nome,
+          cpf_cnpj: contactForm.cpf_cnpj,
+          id_vendedor_externo: contactForm.id_vendedor || null,
+          nome_vendedor: null,
+          cidade: contactForm.cidade || null,
+          endereco: contactForm.endereco || null,
+          numero: contactForm.numero || null,
+          complemento: contactForm.complemento || null,
+          bairro: contactForm.bairro || null,
+          cep: contactForm.cep || null,
+          uf: contactForm.uf || null,
+          fone: contactForm.fone || null,
+          email: contactForm.email || null,
+        })
         setShowContactAccordion(false)
       }
     } catch (e: any) {
