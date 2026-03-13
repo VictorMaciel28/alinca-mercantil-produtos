@@ -223,6 +223,32 @@ export default function PedidoFormPage() {
         const existing = await getPedidoByNumero(idParam)
         if (existing) {
           setForm(existing)
+          const loadedItems = Array.isArray((existing as any)?.itens) ? (existing as any).itens : []
+          setItens(
+            loadedItems.map((it: any, idx: number) => ({
+              id: idx + 1,
+              produtoId: it?.produtoId != null ? Number(it.produtoId) : undefined,
+              nome: String(it?.nome || ''),
+              sku: it?.codigo ? String(it.codigo) : undefined,
+              quantidade: Number(it?.quantidade || 0),
+              unidade: String(it?.unidade || 'UN'),
+              preco: Number(it?.preco || 0),
+              originalPreco: Number(it?.preco || 0),
+            }))
+          )
+          setFormaRecebimento(existing.forma_recebimento || 'Boleto')
+          setCondicaoPagamento(existing.condicao_pagamento || '')
+          const addr = (existing as any)?.endereco_entrega || {}
+          setIsDifferentDeliveryAddress(!!addr?.endereco_diferente)
+          setDeliveryAddress({
+            endereco: addr?.endereco || '',
+            numero: addr?.numero || '',
+            complemento: addr?.complemento || '',
+            bairro: addr?.bairro || '',
+            cep: addr?.cep || '',
+            cidade: addr?.cidade || '',
+            uf: addr?.uf || '',
+          })
         }
       } else {
         setForm((f) => ({ ...f, numero: 0 }))
@@ -662,6 +688,8 @@ export default function PedidoFormPage() {
           ...form,
           status: 'Proposta',
           total: totalComDesconto,
+          forma_recebimento: formaRecebimento,
+          condicao_pagamento: condicaoPagamento,
           id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
           client_vendor_externo: selectedClient?.id_vendedor_externo || null,
         }
@@ -695,6 +723,8 @@ export default function PedidoFormPage() {
       const payloadToSend: any = {
         ...form,
         total: totalComDesconto,
+        forma_recebimento: formaRecebimento,
+        condicao_pagamento: condicaoPagamento,
         id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
         client_vendor_externo: selectedClient?.id_vendedor_externo || null,
       }
@@ -731,19 +761,8 @@ export default function PedidoFormPage() {
         }
       }
       const saved = await savePedidoRemote(payloadToSend)
-      // If backend returned Tiny API response instead of a platform 'numero', show it to the user
-      if (saved && (saved as any).tinyResponse) {
-        setTinyResult((saved as any).tinyResponse)
-        setSentObjectResult((saved as any).sentObject ?? (saved as any))
-        setShowTinyResult(true)
-        setIsSubmitting(false)
-        return
-      }
-      if (isNew) {
-        router.push('/pedidos')
-      } else {
-        router.push(`/pedidos/${saved.numero}`)
-      }
+      // After successful order submission, always return to order listing.
+      router.push('/pedidos')
       return
     } catch (err: any) {
       setSubmitError('Erro inesperado ao enviar o pedido')
@@ -753,8 +772,9 @@ export default function PedidoFormPage() {
   }
 
   const subtotal = useMemo(() => {
+    if (!isNew && itens.length === 0) return Number(form.total || 0)
     return itens.reduce((acc, it) => acc + (it.quantidade * (it.preco || 0)), 0)
-  }, [itens])
+  }, [itens, form.total, isNew])
 
   const descontoHabilitado = useMemo(() => {
     if (formaRecebimento === 'Pix') return true
@@ -763,10 +783,11 @@ export default function PedidoFormPage() {
   }, [formaRecebimento, condicaoPagamento])
 
   const totalComDesconto = useMemo(() => {
+    if (!isNew && itens.length === 0) return Number(form.total || 0)
     const perc = descontoHabilitado ? Math.min(2, Math.max(0, descontoPercent)) : 0
     const tot = subtotal * (1 - perc / 100)
     return tot < 0 ? 0 : tot
-  }, [subtotal, descontoPercent, descontoHabilitado])
+  }, [subtotal, descontoPercent, descontoHabilitado, form.total, isNew, itens.length])
 
   // Payment conditions are loaded from server (payment_condition table).
   const [paymentConditions, setPaymentConditions] = useState<{ id: number; name: string; percent: number }[]>([])

@@ -30,6 +30,14 @@ html[data-bs-theme="light"] .page-content {
     --#{$prefix}body-bg-rgb: #{to-rgb(#f2f4f8)};
 }
 
+/* Improve readability in light mode by darkening text tones */
+html[data-bs-theme="light"],
+[data-bs-theme="light"] {
+    --#{$prefix}body-color: #2f3642;
+    --#{$prefix}secondary-color: #5d6678;
+    --#{$prefix}heading-color: #232a36;
+}
+
 
 /* Color system - Dark Mode only */
 html[data-bs-theme="dark"],

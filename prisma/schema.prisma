@@ -161,6 +161,9 @@ model platform_order {
   cnpj                 String        @db.VarChar(20)
   total                Decimal       @default(0) @db.Decimal(15, 2)
   status               PedidoStatus
+  forma_recebimento    String?       @db.VarChar(50)
+  condicao_pagamento   String?       @db.VarChar(100)
+  endereco_entrega     Json?
   id_vendedor_externo  String?       @db.VarChar(100)
   client_vendor_externo String?      @db.VarChar(100)
   tiny_id              Int?

@@ -105,6 +105,11 @@ export async function POST(req: Request) {
       body?.id_vendedor_externo != null ? body.id_vendedor_externo?.toString?.().trim?.() || null : null
     const client_vendor_externo: string | null =
       body?.client_vendor_externo != null ? body.client_vendor_externo?.toString?.().trim?.() || null : null
+    const forma_recebimento: string | null =
+      body?.forma_recebimento != null ? body.forma_recebimento?.toString?.().trim?.() || null : null
+    const condicao_pagamento: string | null =
+      body?.condicao_pagamento != null ? body.condicao_pagamento?.toString?.().trim?.() || null : null
+    const endereco_entrega: any = body?.endereco_entrega && typeof body.endereco_entrega === 'object' ? body.endereco_entrega : null
 
     if (!cliente) return NextResponse.json({ ok: false, error: 'Cliente obrigatório' }, { status: 400 })
 
@@ -119,60 +124,27 @@ export async function POST(req: Request) {
 
     const status = statusMap[statusStr] ?? 'PENDENTE'
 
-    // helper to compute and save commissions for this order
-    const recomputeCommissions = async (orderNumero: number) => {
-      // Determine who is placing the order
-      let meExterno: string | null = null
-      let meTipo: 'VENDEDOR' | 'TELEVENDAS' | null = null
-      if (userEmail) {
-        const me = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-        meExterno = me?.id_vendedor_externo ?? null
-        if (meExterno) {
-          const tipo = await prisma.vendedor_tipo_acesso.findUnique({ where: { id_vendedor_externo: meExterno } })
-          meTipo = (tipo?.tipo as any) || 'VENDEDOR'
-        }
-      }
-
-      // Attempt to find the client's vendor by CNPJ (digits only)
-      const onlyDigits = (s: string) => (s || '').replace(/\D/g, '')
-      const cnpjDigits = onlyDigits(cnpj)
-      let clientVendorExterno: string | null = client_vendor_externo
-      if (!clientVendorExterno && cnpjDigits) {
-        // fallback: best-effort by CNPJ
-        const cli = await prisma.cliente.findFirst({ where: { cpf_cnpj: { contains: cnpjDigits } } })
-        clientVendorExterno = cli?.id_vendedor_externo ?? null
-      }
-
-      // Clean existing commissions for this order
-      await prisma.platform_commission.deleteMany({ where: { order_num: orderNumero } })
-
-      const entries: { beneficiary_externo: string; role: 'VENDEDOR' | 'TELEVENDAS'; percent: number; amount: number }[] = []
-
-      if (meTipo === 'TELEVENDAS' && meExterno) {
-        if (clientVendorExterno) {
-          // 1% to telemarketing (who created the order), 4% to client's vendor
-          entries.push({ beneficiary_externo: meExterno, role: 'TELEVENDAS', percent: 1, amount: (total * 1) / 100 })
-          entries.push({ beneficiary_externo: clientVendorExterno, role: 'VENDEDOR', percent: 4, amount: (total * 4) / 100 })
-        } else {
-          // 5% to telemarketing
-          entries.push({ beneficiary_externo: meExterno, role: 'TELEVENDAS', percent: 5, amount: (total * 5) / 100 })
-        }
-      } else if (meTipo === 'VENDEDOR' && meExterno) {
-        // 5% to vendor
-        entries.push({ beneficiary_externo: meExterno, role: 'VENDEDOR', percent: 5, amount: (total * 5) / 100 })
-      }
-
-      if (entries.length > 0) {
-        await prisma.platform_commission.createMany({
-          data: entries.map((e) => ({
-            order_num: orderNumero,
-            beneficiary_externo: e.beneficiary_externo,
-            role: e.role as any,
-            percent: e.percent,
-            amount: Number((Math.round(e.amount * 100) / 100).toFixed(2)),
-          })),
+    const normalizeItems = (items: any[]): any[] => {
+      if (!Array.isArray(items)) return []
+      return items
+        .map((it: any) => {
+          const node = it?.item && typeof it.item === 'object' ? it.item : it
+          const nome = (node?.descricao || node?.nome || '').toString().trim()
+          const quantidade = Number(node?.quantidade || 0)
+          const preco = Number(node?.valor_unitario ?? node?.preco ?? 0)
+          if (!nome || quantidade <= 0) return null
+          const produtoIdRaw = node?.produtoId ?? node?.produto_id ?? it?.produtoId ?? it?.produto_id
+          const produtoIdNum = produtoIdRaw != null ? Number(produtoIdRaw) : null
+          return {
+            produto_id: produtoIdNum && !Number.isNaN(produtoIdNum) ? produtoIdNum : null,
+            codigo: node?.codigo ? String(node.codigo) : null,
+            nome,
+            preco,
+            quantidade,
+            unidade: node?.unidade ? String(node.unidade) : 'UN',
+          }
         })
-      }
+        .filter(Boolean)
     }
 
     // NOTE: persisting to the platform DB is commented out for now per request.
@@ -299,6 +271,9 @@ export async function POST(req: Request) {
           cnpj: (pedidoToSend?.cliente?.cpf_cnpj ?? (body?.cnpj || '')).toString(),
           total: total,
           status: platformStatus,
+          forma_recebimento,
+          condicao_pagamento,
+          endereco_entrega,
           id_vendedor_externo: id_vendedor_externo,
           client_vendor_externo: client_vendor_externo,
         }
@@ -338,8 +313,24 @@ export async function POST(req: Request) {
           }
         }
 
-        // Recompute commissions
-        await recomputeCommissions(savedOrder.numero)
+        // Commission is now computed from fiscal-note webhook flow.
+
+        // Persist order items for edit/reload flow
+        const normalizedItems = normalizeItems(body?.itens || pedidoToSend?.itens || [])
+        await prisma.platform_order_product.deleteMany({ where: { order_num: platformNumero } })
+        if (normalizedItems.length > 0) {
+          await prisma.platform_order_product.createMany({
+            data: normalizedItems.map((it: any) => ({
+              order_num: platformNumero,
+              produto_id: it.produto_id,
+              codigo: it.codigo,
+              nome: it.nome,
+              preco: Number(it.preco || 0),
+              quantidade: Number(it.quantidade || 0),
+              unidade: it.unidade || 'UN',
+            })),
+          })
+        }
 
         // Return Tiny response + platform numero
         return NextResponse.json(

@@ -7,6 +7,26 @@ export interface Pedido {
   cnpj: string
   total: number
   status: PedidoStatus
+  forma_recebimento?: string | null
+  condicao_pagamento?: string | null
+  endereco_entrega?: {
+    endereco?: string
+    numero?: string
+    complemento?: string
+    bairro?: string
+    cep?: string
+    cidade?: string
+    uf?: string
+    endereco_diferente?: boolean
+  } | null
+  itens?: Array<{
+    produtoId?: number | null
+    codigo?: string
+    nome: string
+    quantidade: number
+    unidade?: string
+    preco: number
+  }>
 }
 
 export async function getPedidos(): Promise<Pedido[]> {

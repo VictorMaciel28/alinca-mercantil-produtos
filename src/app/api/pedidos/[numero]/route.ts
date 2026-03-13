@@ -28,7 +28,14 @@ export async function GET(_: Request, { params }: { params: { numero: string } }
     const numero = Number(params?.numero || 0)
     if (!numero) return NextResponse.json({ ok: false, error: 'Número inválido' }, { status: 400 })
 
-    const row = await prisma.platform_order.findUnique({ where: { numero } })
+    const row = await prisma.platform_order.findUnique({
+      where: { numero },
+      include: {
+        products: {
+          orderBy: { id: 'asc' },
+        },
+      },
+    })
     if (!row || (!isAdmin && row.vendedor_id !== vendedorId)) {
       return NextResponse.json({ ok: false, error: 'Pedido não encontrado' }, { status: 404 })
     }
@@ -39,6 +46,17 @@ export async function GET(_: Request, { params }: { params: { numero: string } }
       cliente: row.cliente,
       cnpj: row.cnpj,
       total: Number(row.total),
+      forma_recebimento: row.forma_recebimento,
+      condicao_pagamento: row.condicao_pagamento,
+      endereco_entrega: row.endereco_entrega,
+      itens: (row.products || []).map((p: any) => ({
+        produtoId: p.produto_id ?? null,
+        codigo: p.codigo ?? undefined,
+        nome: p.nome,
+        quantidade: Number(p.quantidade || 0),
+        unidade: p.unidade || 'UN',
+        preco: Number(p.preco || 0),
+      })),
       status:
       (row.status as any) === 'PROPOSTA'
         ? 'Proposta'

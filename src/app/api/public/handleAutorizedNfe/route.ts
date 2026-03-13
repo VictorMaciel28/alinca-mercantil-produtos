@@ -47,6 +47,117 @@ async function logWebhook(req: NextRequest, rawBody: string) {
   `
 }
 
+function onlyDigits(v: string | null | undefined) {
+  return (v || '').replace(/\D/g, '')
+}
+
+function toNumberSafe(v: any): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function extractOrderCandidates(webhookPayload: any, nota: any): number[] {
+  const candidatesRaw: any[] = [
+    nota?.numero_ecommerce,
+    webhookPayload?.dados?.numeroPedido,
+    webhookPayload?.dados?.numero_pedido,
+    webhookPayload?.dados?.pedido?.numero,
+    nota?.numero_pedido,
+    nota?.numeroPedido,
+    nota?.pedido?.numero,
+  ]
+  const nums = candidatesRaw
+    .map((x) => Number(String(x ?? '').trim()))
+    .filter((x) => Number.isFinite(x) && x > 0)
+  return Array.from(new Set(nums))
+}
+
+async function recomputeCommissionsFromNota(params: { webhookPayload: any; nota: any }) {
+  const { webhookPayload, nota } = params
+  const notaValue = toNumberSafe(nota?.valor_nota ?? nota?.total)
+  if (notaValue <= 0) return { ok: false, reason: 'nota_value_invalid' }
+
+  const numeroEcommerce = Number(String(nota?.numero_ecommerce ?? '').trim())
+  const numeroCandidates = Number.isFinite(numeroEcommerce) && numeroEcommerce > 0
+    ? [numeroEcommerce]
+    : extractOrderCandidates(webhookPayload, nota)
+  let order: any = null
+
+  if (numeroCandidates.length > 0) {
+    order = await prisma.platform_order.findFirst({
+      where: { numero: { in: numeroCandidates } },
+    })
+  }
+
+  if (!order) {
+    const tinyOrderId = Number(webhookPayload?.dados?.idPedidoTiny ?? webhookPayload?.dados?.idPedido ?? nota?.id_pedido)
+    if (Number.isFinite(tinyOrderId) && tinyOrderId > 0) {
+      order = await prisma.platform_order.findFirst({ where: { tiny_id: tinyOrderId } })
+    }
+  }
+
+  if (!order) {
+    const cpfCnpj = onlyDigits(nota?.cliente?.cpf_cnpj)
+    if (cpfCnpj) {
+      order = await prisma.platform_order.findFirst({
+        where: { cnpj: { contains: cpfCnpj } },
+        orderBy: { created_at: 'desc' },
+      })
+    }
+  }
+
+  if (!order) return { ok: false, reason: 'order_not_found' }
+
+  const meExterno =
+    (order?.id_vendedor_externo && String(order.id_vendedor_externo).trim()) ||
+    (nota?.id_vendedor != null ? String(nota.id_vendedor).trim() : '') ||
+    (webhookPayload?.dados?.idVendedor != null ? String(webhookPayload.dados.idVendedor).trim() : '') ||
+    null
+  let clientVendorExterno = order?.client_vendor_externo || null
+
+  // Fallback: derive client's vendor from CNPJ in DB if order does not have it yet.
+  if (!clientVendorExterno) {
+    const cnpjDigits = onlyDigits(order?.cnpj || nota?.cliente?.cpf_cnpj)
+    if (cnpjDigits) {
+      const cli = await prisma.cliente.findFirst({ where: { cpf_cnpj: { contains: cnpjDigits } } })
+      clientVendorExterno = cli?.id_vendedor_externo || null
+    }
+  }
+
+  if (!meExterno) return { ok: false, reason: 'order_vendor_missing', order_num: order.numero }
+
+  const tipo = await prisma.vendedor_tipo_acesso.findUnique({ where: { id_vendedor_externo: meExterno } })
+  const meTipo = (tipo?.tipo as 'VENDEDOR' | 'TELEVENDAS' | null) || 'VENDEDOR'
+
+  await prisma.platform_commission.deleteMany({ where: { order_num: order.numero } })
+
+  const entries: { beneficiary_externo: string; role: 'VENDEDOR' | 'TELEVENDAS'; percent: number; amount: number }[] = []
+  if (meTipo === 'TELEVENDAS') {
+    if (clientVendorExterno) {
+      entries.push({ beneficiary_externo: meExterno, role: 'TELEVENDAS', percent: 1, amount: (notaValue * 1) / 100 })
+      entries.push({ beneficiary_externo: clientVendorExterno, role: 'VENDEDOR', percent: 4, amount: (notaValue * 4) / 100 })
+    } else {
+      entries.push({ beneficiary_externo: meExterno, role: 'TELEVENDAS', percent: 5, amount: (notaValue * 5) / 100 })
+    }
+  } else {
+    entries.push({ beneficiary_externo: meExterno, role: 'VENDEDOR', percent: 5, amount: (notaValue * 5) / 100 })
+  }
+
+  if (entries.length > 0) {
+    await prisma.platform_commission.createMany({
+      data: entries.map((e) => ({
+        order_num: order.numero,
+        beneficiary_externo: e.beneficiary_externo,
+        role: e.role as any,
+        percent: e.percent,
+        amount: Number((Math.round(e.amount * 100) / 100).toFixed(2)),
+      })),
+    })
+  }
+
+  return { ok: true, order_num: order.numero, nota_value: notaValue, entries: entries.length }
+}
+
 export async function POST(req: NextRequest) {
   const raw = await req.text()
   let json: any = null
@@ -94,6 +205,13 @@ export async function POST(req: NextRequest) {
   const nota = data?.retorno?.nota_fiscal ?? null
   if (!nota) {
     return NextResponse.json({ ok: false, error: 'nota_not_found' }, { status: 404 })
+  }
+
+  let commissionResult: any = null
+  try {
+    commissionResult = await recomputeCommissionsFromNota({ webhookPayload: json, nota })
+  } catch (e: any) {
+    commissionResult = { ok: false, reason: 'commission_failed', detail: String(e) }
   }
 
   const numero = nota.numero ?? ''
@@ -166,6 +284,6 @@ export async function POST(req: NextRequest) {
     results.email = { error: String(e) }
   }
 
-  return NextResponse.json({ ok: true, results })
+  return NextResponse.json({ ok: true, results, commission: commissionResult })
 }
 
