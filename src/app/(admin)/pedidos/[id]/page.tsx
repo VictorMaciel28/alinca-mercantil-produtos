@@ -306,7 +306,11 @@ export default function PedidoFormPage() {
           const idx = arr.findIndex((it) => (it.sku || '').toLowerCase() === (p.codigo || '').toLowerCase())
           if (idx >= 0) {
             const next = [...arr]
-            next[idx] = { ...next[idx], quantidade: next[idx].quantidade + 1 }
+            next[idx] = {
+              ...next[idx],
+              quantidade: next[idx].quantidade + 1,
+              produtoId: next[idx].produtoId ?? p.id,
+            }
             return next
           }
           const nextId = arr.reduce((m, it) => Math.max(m, it.id), 0) + 1
@@ -314,6 +318,7 @@ export default function PedidoFormPage() {
             ...arr,
             {
               id: nextId,
+              produtoId: p.id,
               nome: p.nome,
               sku: p.codigo,
               quantidade: 1,
@@ -690,20 +695,33 @@ export default function PedidoFormPage() {
           total: totalComDesconto,
           forma_recebimento: formaRecebimento,
           condicao_pagamento: condicaoPagamento,
-          id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
-          client_vendor_externo: selectedClient?.id_vendedor_externo || null,
+          vendedor: {
+            id: Number(meVendedor?.id_vendedor_externo || 0),
+          },
         }
         payloadProposal.cliente =
           !payloadProposal.cliente || typeof payloadProposal.cliente === 'string'
-            ? { nome: String(form.cliente || '').trim(), cpf_cnpj: String(form.cnpj || '').trim() }
-            : { ...(payloadProposal.cliente || {}), cpf_cnpj: String(form.cnpj || '').trim(), nome: payloadProposal.cliente.nome || String(form.cliente || '').trim() }
+            ? {
+                id: selectedClient?.external_id ? Number(selectedClient.external_id) : undefined,
+                external_id: selectedClient?.external_id || undefined,
+                nome: String(form.cliente || '').trim(),
+                cpf_cnpj: String(form.cnpj || '').trim(),
+              }
+            : {
+                ...(payloadProposal.cliente || {}),
+                id:
+                  payloadProposal.cliente.id ??
+                  (selectedClient?.external_id ? Number(selectedClient.external_id) : undefined),
+                external_id: payloadProposal.cliente.external_id ?? selectedClient?.external_id ?? undefined,
+                cpf_cnpj: String(form.cnpj || '').trim(),
+                nome: payloadProposal.cliente.nome || String(form.cliente || '').trim(),
+              }
         // remove top-level cnpj to avoid duplication when sending to Tiny via backend
         delete payloadProposal.cnpj
         // Include items in platform format so they are persisted with the proposal (not sent to Tiny yet)
         if (itens && itens.length > 0) {
           payloadProposal.itens = itens.map((it) => ({
             produtoId: it.produtoId ?? null,
-            codigo: it.sku ?? undefined,
             nome: it.nome,
             quantidade: it.quantidade,
             unidade: it.unidade,
@@ -725,39 +743,70 @@ export default function PedidoFormPage() {
         total: totalComDesconto,
         forma_recebimento: formaRecebimento,
         condicao_pagamento: condicaoPagamento,
-        id_vendedor_externo: meVendedor?.id_vendedor_externo || null,
-        client_vendor_externo: selectedClient?.id_vendedor_externo || null,
+        vendedor: {
+          id: Number(meVendedor?.id_vendedor_externo || 0),
+        },
       }
       payloadToSend.cliente =
         !payloadToSend.cliente || typeof payloadToSend.cliente === 'string'
-          ? { nome: String(form.cliente || '').trim(), cpf_cnpj: String(form.cnpj || '').trim() }
-          : { ...(payloadToSend.cliente || {}), cpf_cnpj: String(form.cnpj || '').trim(), nome: payloadToSend.cliente.nome || String(form.cliente || '').trim() }
+          ? {
+              id: selectedClient?.external_id ? Number(selectedClient.external_id) : undefined,
+              external_id: selectedClient?.external_id || undefined,
+              nome: String(form.cliente || '').trim(),
+              cpf_cnpj: String(form.cnpj || '').trim(),
+            }
+          : {
+              ...(payloadToSend.cliente || {}),
+              id:
+                payloadToSend.cliente.id ??
+                (selectedClient?.external_id ? Number(selectedClient.external_id) : undefined),
+              external_id: payloadToSend.cliente.external_id ?? selectedClient?.external_id ?? undefined,
+              cpf_cnpj: String(form.cnpj || '').trim(),
+              nome: payloadToSend.cliente.nome || String(form.cliente || '').trim(),
+            }
       delete payloadToSend.cnpj
       payloadToSend.endereco_entrega = {
         ...deliveryAddress,
         endereco_diferente: isDifferentDeliveryAddress,
       }
-      // Map local itens to Tiny documentation format:
-      // pedido.itens = [ { item: { codigo, descricao, unidade, quantidade, valor_unitario } }, ... ]
+      if (parcelas && parcelas.length > 0) {
+        payloadToSend.pagamento = {
+          formaRecebimento: { id: 0 },
+          meioPagamento: { id: 0 },
+          parcelas: parcelas.map((p) => {
+            const baseDate = new Date(form.data || new Date().toISOString().slice(0, 10))
+            const due = new Date(p.data)
+            const ms = due.getTime() - baseDate.getTime()
+            const dias = Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)))
+            return {
+              dias,
+              data: due.toISOString().slice(0, 10),
+              valor: Number(p.valor || 0),
+              observacoes: '',
+              formaRecebimento: { id: 0 },
+              meioPagamento: { id: 0 },
+            }
+          }),
+        }
+      }
       if (itens && itens.length > 0) {
-        const tinyItems = itens
+        const mappedItems = itens
           .map((it) => {
             const descricao = it.nome?.toString().trim()
             const quantidade = Number(it.quantidade || 0)
-            if (!descricao || quantidade <= 0) return null
+            const produtoId = Number(it.produtoId || 0)
+            if (!descricao || quantidade <= 0 || !produtoId) return null
             return {
-              item: {
-                codigo: it.sku || undefined,
-                descricao,
-                unidade: it.unidade || 'UN',
-                quantidade: String(quantidade),
-                valor_unitario: String(Number(it.preco || 0).toFixed(2)),
-              },
+              produtoId,
+              nome: descricao,
+              quantidade,
+              unidade: it.unidade || 'UN',
+              preco: Number(it.preco || 0),
             }
           })
           .filter(Boolean)
-        if (tinyItems.length > 0) {
-          payloadToSend.itens = tinyItems
+        if (mappedItems.length > 0) {
+          payloadToSend.itens = mappedItems
         }
       }
       const saved = await savePedidoRemote(payloadToSend)
@@ -1507,6 +1556,7 @@ export default function PedidoFormPage() {
                   ...arr,
                   {
                     id: nextId,
+                    produtoId: qtyModalProduct.id,
                     nome: qtyModalProduct.nome,
                     sku: qtyModalProduct.codigo,
                     quantidade: qtyModalValue,

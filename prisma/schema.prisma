@@ -506,3 +506,21 @@ model webhook_log {
   @@index([received_at], map: "idx_webhook_log_received_at")
   @@index([method], map: "idx_webhook_log_method")
 }
+
+model tiny_oauth_account {
+  id               Int      @id @default(autoincrement())
+  cnpj             String   @unique(map: "uk_tiny_oauth_account_cnpj") @db.VarChar(20)
+  nome             String   @db.VarChar(255)
+  apiv2_key        String?  @db.VarChar(255)
+  client_id        String   @db.VarChar(255)
+  client_secret    String   @db.VarChar(255)
+  access_token     String?  @db.Text
+  refresh_token    String?  @db.Text
+  token_expires_at DateTime? @db.DateTime(0)
+  active           Boolean  @default(true) @db.TinyInt
+  created_at       DateTime @default(now()) @db.DateTime(0)
+  updated_at       DateTime @updatedAt @db.DateTime(0)
+
+  @@index([active], map: "idx_tiny_oauth_account_active")
+  @@index([token_expires_at], map: "idx_tiny_oauth_account_token_exp")
+}

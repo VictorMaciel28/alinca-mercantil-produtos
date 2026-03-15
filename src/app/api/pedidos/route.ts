@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { options } from '@/app/api/auth/[...nextauth]/options'
+import { tinyV3Fetch } from '@/lib/tinyOAuth'
 
 export async function GET() {
   try {
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
     const total = Number(body?.total || 0)
     const statusStr = (body?.status || 'Pendente').toString()
     const id_vendedor_externo =
-      body?.id_vendedor_externo != null ? body.id_vendedor_externo?.toString?.().trim?.() || null : null
+      body?.vendedor?.id != null ? String(body.vendedor.id).trim() : null
     const client_vendor_externo: string | null =
       body?.client_vendor_externo != null ? body.client_vendor_externo?.toString?.().trim?.() || null : null
     const forma_recebimento: string | null =
@@ -147,102 +148,71 @@ export async function POST(req: Request) {
         .filter(Boolean)
     }
 
-    // NOTE: persisting to the platform DB is commented out for now per request.
-    // The code below would normally update or create the platform_order and recompute commissions.
-    // It is intentionally disabled so we only forward to Tiny and return its response + the sent object.
+    const toIsoDate = (s: any) => (s ? String(s).slice(0, 10) : new Date().toISOString().slice(0, 10))
+    const rawCliente = typeof body?.cliente === 'object' ? body?.cliente : null
+    const idContatoRaw = rawCliente?.id ?? rawCliente?.idContato ?? rawCliente?.external_id ?? null
+    const idContato = idContatoRaw != null ? Number(idContatoRaw) : null
+    const vendedorTinyId = id_vendedor_externo != null ? Number(id_vendedor_externo) : null
+    const endereco = endereco_entrega || {}
 
-    // Prepare object to send to Tiny (the frontend body is forwarded as-is under 'pedido')
-    const tinyToken = process.env.TINY_API_TOKEN
-    if (!tinyToken) {
-      return NextResponse.json({ ok: false, error: 'Token Tiny não configurado' }, { status: 500 })
-    }
-
-    // Prepare objeto para Tiny: Tiny espera `pedido.cliente` como objeto.
-    const pedidoToSend: any = { ...body }
-    // If cliente is a plain string (nome) or missing, replace with object containing cpf_cnpj (CNPJ)
-    if (!pedidoToSend.cliente || typeof pedidoToSend.cliente === 'string') {
-      // When UI provides cliente as string, convert to Tiny's expected object with nome and cpf_cnpj
-      pedidoToSend.cliente = {
-        nome: (body?.cliente || '').toString().trim(),
-        cpf_cnpj: (body?.cnpj || '').toString().trim(),
-      }
-    } else if (typeof pedidoToSend.cliente === 'object') {
-      // Ensure object has both nome and cpf_cnpj populated (prefer explicit fields, fallback to top-level cnpj)
-      if (!pedidoToSend.cliente.cpf_cnpj) {
-        pedidoToSend.cliente.cpf_cnpj = (body?.cnpj || '').toString().trim()
-      }
-      if (!pedidoToSend.cliente.nome && body?.cliente) {
-        pedidoToSend.cliente.nome = (body?.cliente || '').toString().trim()
-      }
-    }
-    // Remove top-level cnpj to avoid duplication (Tiny expects cliente.cpf_cnpj)
-    delete pedidoToSend.cnpj
-    // Ensure data_pedido is in Tiny's expected dd/mm/YYYY format
-    const makeDDMMYYYY = (isoOrStr: string | Date) => {
-      const d = typeof isoOrStr === 'string' && isoOrStr.length >= 10 ? new Date(isoOrStr) : new Date(isoOrStr)
-      const dd = String(d.getDate()).padStart(2, '0')
-      const mm = String(d.getMonth() + 1).padStart(2, '0')
-      const yyyy = d.getFullYear()
-      return `${dd}/${mm}/${yyyy}`
-    }
-    // prefer body.data (ISO YYYY-MM-DD) else today's date
-    pedidoToSend.data_pedido = body?.data ? makeDDMMYYYY(body.data) : makeDDMMYYYY(new Date())
-
-    // Build form data for Tiny (Tiny expects 'pedido' as JSON string)
-    // If itens are present in platform format (platform_order_product shape), convert to Tiny format
-    try {
-      if (Array.isArray(pedidoToSend.itens) && pedidoToSend.itens.length > 0) {
-        const first = pedidoToSend.itens[0]
-        const looksLikePlatform = Object.prototype.hasOwnProperty.call(first, 'nome') || Object.prototype.hasOwnProperty.call(first, 'codigo') || Object.prototype.hasOwnProperty.call(first, 'preco')
-        if (looksLikePlatform) {
-          pedidoToSend.itens = pedidoToSend.itens
-            .map((it: any) => {
-              const descricao = it.nome || it.descricao || ''
-              const quantidade = Number(it.quantidade || 0)
-              if (!descricao || quantidade <= 0) return null
-              return {
-                item: {
-                  codigo: it.codigo || it.sku || undefined,
-                  descricao,
-                  unidade: it.unidade || 'UN',
-                  quantidade: String(quantidade),
-                  valor_unitario: String(Number(it.preco || 0).toFixed(2)),
-                },
-              }
-            })
-            .filter(Boolean)
+    const normalizedItems = normalizeItems(body?.itens || [])
+    const itensV3 = normalizedItems
+      .map((it: any) => {
+        const productId = it?.produto_id ? Number(it.produto_id) : null
+        if (!productId || Number.isNaN(productId)) return null
+        return {
+          produto: { id: productId, tipo: 'P' },
+          quantidade: Number(it.quantidade || 0),
+          valorUnitario: Number(it.preco || 0),
         }
-      }
-    } catch (e) {
-      // ignore conversion errors and send as-is
+      })
+      .filter(Boolean)
+
+    if (itensV3.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: 'Itens do pedido sem produto_id para API v3. Selecione produtos com vínculo de ID.' },
+        { status: 400 }
+      )
     }
 
-    const formData = new URLSearchParams()
-    formData.append('token', tinyToken)
-    formData.append('formato', 'json')
-    formData.append('pedido', JSON.stringify({ pedido: pedidoToSend }))
+    const pedidoV3: any = {
+      data: toIsoDate(body?.data),
+      valorDesconto: 0,
+      valorFrete: 0,
+      valorOutrasDespesas: 0,
+      itens: itensV3,
+      ecommerce: {
+        numeroPedidoEcommerce: String(body?.numero || numeroInput || ''),
+      },
+      enderecoEntrega: {
+        endereco: endereco?.endereco || '',
+        enderecoNro: endereco?.numero || '',
+        complemento: endereco?.complemento || '',
+        bairro: endereco?.bairro || '',
+        municipio: endereco?.cidade || '',
+        cep: endereco?.cep || '',
+        uf: endereco?.uf || '',
+      },
+    }
+    if (idContato && !Number.isNaN(idContato)) pedidoV3.idContato = idContato
+    pedidoV3.vendedor = { id: vendedorTinyId }
+    if (body?.pagamento && typeof body.pagamento === 'object') {
+      pedidoV3.pagamento = body.pagamento
+    }
 
-    try {
-      const resTiny = await fetch('https://api.tiny.com.br/api2/pedido.incluir.php', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-        body: formData.toString(),
-      })
-      const dataTiny = await resTiny.json().catch(() => null)
+    const resTiny = await tinyV3Fetch('/pedidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pedidoV3),
+    })
+    const dataTiny = await resTiny.json().catch(() => null)
 
       // Try to extract Tiny-assigned order number and id
       let tinyNumero: string | null = null
       let tinyId: number | null = null
       try {
-        const reg = dataTiny?.retorno?.registros?.registro
-        const registro = Array.isArray(reg) ? reg[0] : reg
-        if (registro) {
-          if (registro.numero) tinyNumero = String(registro.numero)
-          if (registro.id) tinyId = Number(registro.id)
-        }
+        if (dataTiny?.numeroPedido) tinyNumero = String(dataTiny.numeroPedido)
+        if (dataTiny?.id) tinyId = Number(dataTiny.id)
       } catch (e) {
         // ignore extraction errors
       }
@@ -267,8 +237,8 @@ export async function POST(req: Request) {
         const baseOrderData: any = {
           numero: platformNumero,
           data: dataStr ? new Date(dataStr) : new Date(),
-          cliente: (pedidoToSend?.cliente?.nome ?? (body?.cliente || '')).toString(),
-          cnpj: (pedidoToSend?.cliente?.cpf_cnpj ?? (body?.cnpj || '')).toString(),
+          cliente: ((rawCliente?.nome as string) ?? (body?.cliente || '')).toString(),
+          cnpj: ((rawCliente?.cpf_cnpj as string) ?? (body?.cnpj || '')).toString(),
           total: total,
           status: platformStatus,
           forma_recebimento,
@@ -316,7 +286,6 @@ export async function POST(req: Request) {
         // Commission is now computed from fiscal-note webhook flow.
 
         // Persist order items for edit/reload flow
-        const normalizedItems = normalizeItems(body?.itens || pedidoToSend?.itens || [])
         await prisma.platform_order_product.deleteMany({ where: { order_num: platformNumero } })
         if (normalizedItems.length > 0) {
           await prisma.platform_order_product.createMany({
@@ -334,16 +303,13 @@ export async function POST(req: Request) {
 
         // Return Tiny response + platform numero
         return NextResponse.json(
-          { ok: true, tinyResponse: dataTiny, sentObject: body, numero: platformNumero },
+          { ok: true, tinyResponse: dataTiny, sentObject: pedidoV3, numero: platformNumero },
           { status: resTiny.ok ? 200 : resTiny.status }
         )
       }
 
       // If no numero from Tiny, just return its response for inspection
-      return NextResponse.json({ ok: true, tinyResponse: dataTiny, sentObject: body }, { status: resTiny.ok ? 200 : resTiny.status })
-    } catch (err: any) {
-      return NextResponse.json({ ok: false, error: 'Falha ao comunicar com Tiny', details: err?.message || String(err) }, { status: 500 })
-    }
+      return NextResponse.json({ ok: true, tinyResponse: dataTiny, sentObject: pedidoV3 }, { status: resTiny.ok ? 200 : resTiny.status })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao salvar pedido' }, { status: 500 })
   }
