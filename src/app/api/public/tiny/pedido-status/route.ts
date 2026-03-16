@@ -93,10 +93,26 @@ async function handle(req: NextRequest) {
     try {
       const tinyRes = await tinyV3Fetch(`/pedidos/${tinyOrderId}`, { method: 'GET' })
       const tinyJson = await tinyRes.json().catch(() => null)
-      const tinyPedido = tinyJson?.item || tinyJson?.pedido || tinyJson?.data || tinyJson
+      const tinyPedido =
+        tinyJson?.item ||
+        tinyJson?.pedido ||
+        tinyJson?.data ||
+        tinyJson?.retorno?.pedido ||
+        tinyJson?.retorno?.item ||
+        tinyJson
 
-      const numero = Number(tinyPedido?.numeroPedido || tinyPedido?.numero || 0)
-      if (tinyRes.ok && numero > 0) {
+      const numero = Number(tinyPedido?.numeroPedido || tinyPedido?.numero || payload?.dados?.numero || 0)
+      const tinyPedidoId = Number(tinyPedido?.id || 0)
+
+      if (tinyRes.ok && tinyPedidoId > 0) {
+        if (tinyPedidoId !== tinyOrderId) {
+          tinyFetchError = `tiny_v3_id_mismatch: expected=${tinyOrderId}, got=${tinyPedidoId}`
+          throw new Error(tinyFetchError)
+        }
+        if (!Number.isFinite(numero) || numero <= 0) {
+          tinyFetchError = `tiny_v3_missing_numero: status=${tinyRes.status}, keys=${Object.keys(tinyJson || {}).join(',')}`
+          throw new Error(tinyFetchError)
+        }
         const dataStr = String(tinyPedido?.data || '').slice(0, 10)
         const clienteNome = String(tinyPedido?.cliente?.nome || '').trim()
         const clienteCpfCnpj = String(tinyPedido?.cliente?.cpfCnpj || '').trim()
@@ -123,6 +139,10 @@ async function handle(req: NextRequest) {
             }
           : null
 
+        const existingByTinyId = await prisma.platform_order.findFirst({
+          where: { tiny_id: tinyOrderId },
+          select: { id: true, numero: true },
+        })
         const existingByNumero = await prisma.platform_order.findUnique({ where: { numero } })
         const baseData: any = {
           numero,
@@ -140,7 +160,12 @@ async function handle(req: NextRequest) {
           id_nota_fiscal: notaFiscalId || null,
         }
 
-        if (existingByNumero) {
+        if (existingByTinyId) {
+          await prisma.platform_order.update({
+            where: { id: existingByTinyId.id },
+            data: baseData,
+          })
+        } else if (existingByNumero) {
           await prisma.platform_order.update({
             where: { numero },
             data: baseData,
@@ -170,7 +195,7 @@ async function handle(req: NextRequest) {
           select: { id: true, numero: true },
         })
       } else {
-        tinyFetchError = `tiny_v3_not_found_or_invalid: status=${tinyRes.status}`
+        tinyFetchError = `tiny_v3_not_found_or_invalid: status=${tinyRes.status}, keys=${Object.keys(tinyJson || {}).join(',')}`
       }
     } catch (e: any) {
       tinyFetchError = e?.message || 'tiny_v3_fetch_failed'
