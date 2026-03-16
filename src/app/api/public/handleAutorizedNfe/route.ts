@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
     const smtpPass = process.env.SMTP_PASS || 'sama@aliancamercantil.com'
     const from = process.env.EMAIL_FROM || smtpUser
     const clientEmail = nota?.cliente?.email?.trim()
-    const toEmail = clientEmail || process.env.NOTIFY_EMAIL || 'danielffmeirelles@gmail.com'
+    const toEmail = clientEmail || (process.env.NOTIFY_EMAIL ?? '')
 
     const transporter = nodemailer.createTransport({
       host: smtpHost,
