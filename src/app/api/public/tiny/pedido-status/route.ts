@@ -93,13 +93,16 @@ async function handle(req: NextRequest) {
     try {
       const tinyRes = await tinyV3Fetch(`/pedidos/${tinyOrderId}`, { method: 'GET' })
       const tinyJson = await tinyRes.json().catch(() => null)
-      const tinyPedido =
-        tinyJson?.item ||
-        tinyJson?.pedido ||
-        tinyJson?.data ||
-        tinyJson?.retorno?.pedido ||
-        tinyJson?.retorno?.item ||
-        tinyJson
+      const tinyJsonIsObject = !!tinyJson && typeof tinyJson === 'object' && !Array.isArray(tinyJson)
+      const rootHasId = tinyJsonIsObject && Number((tinyJson as any)?.id || 0) > 0
+      const tinyPedido = rootHasId
+        ? tinyJson
+        : tinyJson?.item ||
+          tinyJson?.pedido ||
+          tinyJson?.data ||
+          tinyJson?.retorno?.pedido ||
+          tinyJson?.retorno?.item ||
+          tinyJson
 
       const numero = Number(tinyPedido?.numeroPedido || tinyPedido?.numero || payload?.dados?.numero || 0)
       const tinyPedidoId = Number(tinyPedido?.id || 0)
@@ -195,7 +198,7 @@ async function handle(req: NextRequest) {
           select: { id: true, numero: true },
         })
       } else {
-        tinyFetchError = `tiny_v3_not_found_or_invalid: status=${tinyRes.status}, keys=${Object.keys(tinyJson || {}).join(',')}`
+        tinyFetchError = `tiny_v3_not_found_or_invalid: status=${tinyRes.status}, tinyPedidoId=${tinyPedidoId}, rootHasId=${rootHasId ? 1 : 0}, keys=${Object.keys(tinyJson || {}).join(',')}`
       }
     } catch (e: any) {
       tinyFetchError = e?.message || 'tiny_v3_fetch_failed'
