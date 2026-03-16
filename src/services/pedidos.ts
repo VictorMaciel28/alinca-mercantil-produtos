@@ -1,27 +1,45 @@
 export type PedidoStatus =
-  | 'Pendente'
-  | 'Pago'
-  | 'Cancelado'
-  | 'Faturado'
-  | 'Em aberto'
-  | 'Entregue'
   | 'Proposta'
+  | 'Pendente'
+  | 'Faturado'
+  | 'Enviado'
+  | 'Entregue'
+  | 'Cancelado'
+  | 'Dados incompletos'
 
 export interface Pedido {
   numero: number
   data: string // ISO date: YYYY-MM-DD
   cliente: string
   cnpj: string
+  id_client_externo?: string | null
   total: number
   status: PedidoStatus
 }
 
+const LIST_CACHE_TTL_MS = 2500
+let pedidosCache: { ts: number; data: Pedido[] } | null = null
+let pedidosInFlight: Promise<Pedido[]> | null = null
+
 // Funções para consumir a API de pedidos da plataforma
 export async function getPedidos(): Promise<Pedido[]> {
-  const res = await fetch('/api/pedidos')
-  const json = await res.json()
-  if (!res.ok || !json?.ok) return []
-  return json.data as Pedido[]
+  const now = Date.now()
+  if (pedidosCache && now - pedidosCache.ts < LIST_CACHE_TTL_MS) return pedidosCache.data
+  if (pedidosInFlight) return pedidosInFlight
+
+  pedidosInFlight = (async () => {
+    const res = await fetch('/api/pedidos')
+    const json = await res.json()
+    const data = !res.ok || !json?.ok ? [] : (json.data as Pedido[])
+    pedidosCache = { ts: Date.now(), data }
+    return data
+  })()
+
+  try {
+    return await pedidosInFlight
+  } finally {
+    pedidosInFlight = null
+  }
 }
 
 export function getNextPedidoNumero(): number {

@@ -1,10 +1,11 @@
-export type PedidoStatus = 'Pendente' | 'Pago' | 'Cancelado' | 'Faturado' | 'Em aberto' | 'Entregue' | 'Proposta'
+export type PedidoStatus = 'Proposta' | 'Pendente' | 'Faturado' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Dados incompletos'
 
 export interface Pedido {
   numero: number
   data: string // ISO date: YYYY-MM-DD
   cliente: string
   cnpj: string
+  id_client_externo?: string | null
   total: number
   status: PedidoStatus
   forma_recebimento?: string | null
@@ -40,12 +41,31 @@ export function getNextPedidoNumero(): number {
   return 1001
 }
 
+const pedidoByNumeroCache = new Map<number, { ts: number; data: Pedido | undefined }>()
+const pedidoByNumeroInFlight = new Map<number, Promise<Pedido | undefined>>()
+
 export async function getPedidoByNumero(numero: number): Promise<Pedido | undefined> {
   if (!numero) return undefined
-  const res = await fetch(`/api/pedidos/${numero}`)
-  const json = await res.json()
-  if (!res.ok || !json?.ok) return undefined
-  return json.data as Pedido
+  const now = Date.now()
+  const cached = pedidoByNumeroCache.get(numero)
+  if (cached && now - cached.ts < 5000) return cached.data
+
+  const inFlight = pedidoByNumeroInFlight.get(numero)
+  if (inFlight) return inFlight
+
+  const p = (async () => {
+    const res = await fetch(`/api/pedidos/${numero}`)
+    const json = await res.json()
+    const data = !res.ok || !json?.ok ? undefined : (json.data as Pedido)
+    pedidoByNumeroCache.set(numero, { ts: Date.now(), data })
+    return data
+  })()
+  pedidoByNumeroInFlight.set(numero, p)
+  try {
+    return await p
+  } finally {
+    pedidoByNumeroInFlight.delete(numero)
+  }
 }
 
 export async function savePedido(input: Partial<Pedido> & {

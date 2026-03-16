@@ -16,7 +16,6 @@ model vendedor {
   tiny_id   Int?
   id_vendedor_externo String? @db.VarChar(100)
   clientes  cliente[]
-  platform_orders platform_order[]
 
   @@index([tiny_id], map: "idx_vendedor_tiny_id")
   @@index([id_vendedor_externo], map: "idx_vendedor_external_id")
@@ -71,6 +70,7 @@ model cliente {
 
   created_at            DateTime  @default(now()) @db.DateTime(0)
   updated_at            DateTime  @updatedAt @db.DateTime(0)
+  platform_orders       platform_order[]
 
   @@index([nome], map: "idx_cliente_nome")
   @@index([cpf_cnpj], map: "idx_cliente_cpf_cnpj")
@@ -146,11 +146,11 @@ model vendedor_nivel_acesso {
 enum PedidoStatus {
   PROPOSTA
   PENDENTE
-  PAGO
   CANCELADO
   FATURADO
-  EM_ABERTO
+  ENVIADO
   ENTREGUE
+  DADOS_INCOMPLETOS
 }
 
 model platform_order {
@@ -165,12 +165,13 @@ model platform_order {
   condicao_pagamento   String?       @db.VarChar(100)
   endereco_entrega     Json?
   id_vendedor_externo  String?       @db.VarChar(100)
+  id_client_externo    BigInt?       @db.UnsignedBigInt
   client_vendor_externo String?      @db.VarChar(100)
   tiny_id              Int?
-  vendedor_id          Int? 
-  vendedor             vendedor?     @relation(fields: [vendedor_id], references: [id], onDelete: SetNull)
+  id_nota_fiscal       String?       @db.VarChar(100)
   created_at           DateTime      @default(now()) @db.DateTime(0)
   updated_at           DateTime      @updatedAt @db.DateTime(0)
+  cliente_rel          cliente?      @relation(fields: [id_client_externo], references: [external_id], onDelete: SetNull)
   commissions          platform_commission[]
   products             platform_order_product[]
 }
@@ -523,4 +524,16 @@ model tiny_oauth_account {
 
   @@index([active], map: "idx_tiny_oauth_account_active")
   @@index([token_expires_at], map: "idx_tiny_oauth_account_token_exp")
+}
+
+model tiny_receive_form {
+  id         Int      @id @default(autoincrement())
+  tiny_id    BigInt   @unique(map: "uk_tiny_receive_form_tiny_id") @db.UnsignedBigInt
+  nome       String   @db.VarChar(120)
+  situacao   Int      @default(1) @db.TinyInt
+  created_at DateTime @default(now()) @db.DateTime(0)
+  updated_at DateTime @updatedAt @db.DateTime(0)
+
+  @@index([situacao], map: "idx_tiny_receive_form_situacao")
+  @@index([nome], map: "idx_tiny_receive_form_nome")
 }

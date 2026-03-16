@@ -9,8 +9,9 @@ const LayoutProvider = dynamic(() => import('@/context/useLayoutContext').then((
 })
 import { NotificationProvider } from '@/context/useNotificationContext'
 import { ChildrenType } from '@/types/component-props'
+import type { Session } from 'next-auth'
 
-const AppProvidersWrapper = ({ children }: ChildrenType) => {
+const AppProvidersWrapper = ({ children, session }: ChildrenType & { session?: Session | null }) => {
   const handleChangeTitle = () => {
     if (document.visibilityState == 'hidden') document.title = 'SAMA'
     else document.title = DEFAULT_PAGE_TITLE
@@ -34,7 +35,7 @@ const AppProvidersWrapper = ({ children }: ChildrenType) => {
   }, [])
 
   return (
-    <SessionProvider>
+    <SessionProvider session={session} refetchOnWindowFocus={false}>
       <LayoutProvider>
         <NotificationProvider>
           {children}

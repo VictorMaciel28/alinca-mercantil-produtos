@@ -8,6 +8,8 @@ import '@/assets/scss/app.scss'
 import './globals.css'
 import { DEFAULT_PAGE_TITLE } from '@/context/constants'
 import { LanguageProvider } from '@/contexts/LanguageContext'
+import { getServerSession } from 'next-auth'
+import { options } from '@/app/api/auth/[...nextauth]/options'
 
 const figtree = Figtree({
   subsets: ['latin'],
@@ -54,11 +56,13 @@ const splashScreenStyles = `
 }
 `
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const session = await getServerSession(options as any)
+
   return (
     <html lang="pt">
       <head>
@@ -79,7 +83,7 @@ export default function RootLayout({
           </div>
           <NextTopLoader color="#604ae3" showSpinner={false} />
           <div id="__next_splash">
-            <AppProvidersWrapper>{children}</AppProvidersWrapper>
+            <AppProvidersWrapper session={session as any}>{children}</AppProvidersWrapper>
           </div>
         </LanguageProvider>
       </body>

@@ -7,11 +7,9 @@ export async function GET(req: Request) {
   try {
     const session = await getServerSession(options as any)
     const userEmail = session?.user?.email || null
-    let vendedorId: number | null = null
     let vendedorExterno: string | null = null
     if (userEmail) {
       const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-      vendedorId = vend?.id ?? null
       vendedorExterno = vend?.id_vendedor_externo ?? null
     }
 
@@ -54,10 +52,10 @@ export async function GET(req: Request) {
 
     // If vendor filter not provided, but we have a logged vendor, restrict results to that vendor (either as beneficiary or as order owner)
     if (!vendorExterno && vendedorExterno) {
-      // include commissions where beneficiary_externo is this vendor OR the related order.vendedor_id equals this vendor
+      // include commissions where beneficiary_externo is this vendor OR the related order.id_vendedor_externo equals this vendor
       where.OR = where.OR || []
       where.OR.push({ beneficiary_externo: vendedorExterno })
-      where.OR.push({ order: { vendedor_id: vendedorId } })
+      where.OR.push({ order: { id_vendedor_externo: vendedorExterno } })
     }
 
     const rows = await prisma.platform_commission.findMany({

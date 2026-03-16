@@ -128,17 +128,23 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
  
    return (
      <>
-       <PageTitle title={title ?? (entity === 'proposta' ? 'Propostas Comerciais' : 'Pedidos')} subName={subName ?? (entity === 'proposta' ? 'Consulta e acompanhamento' : 'Consulta e acompanhamento')} />
- 
-       <section className="filtros py-2">
+      <PageTitle
+        title={title ?? (entity === 'proposta' ? 'Propostas Comerciais' : 'Pedidos')}
+        subName={subName ?? (entity === 'proposta' ? 'Consulta e acompanhamento' : 'Consulta e acompanhamento')}
+        compactRight
+        actions={
+          <Button size="sm" onClick={() => router.push(newPath)}>
+            Novo {entity === 'proposta' ? 'Proposta' : 'Pedido'}
+          </Button>
+        }
+      />
+
+      <section className="filtros pt-1 pb-2">
          <Card className="border-0 shadow-sm">
-           <Card.Header className="bg-white d-flex justify-content-between align-items-center">
-             <div className="fw-semibold">Filtros</div>
-           </Card.Header>
            <Card.Body>
              <Row className="g-3 align-items-end">
                <Col lg={4} md={6}>
-                 <Form.Label>Buscar</Form.Label>
+                 <Form.Label>Filtrar pedidos</Form.Label>
                  <Form.Control
                    type="text"
                    placeholder="Buscar por N°, Cliente ou CNPJ"
@@ -158,9 +164,12 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                  <Form.Label>Status</Form.Label>
                  <Form.Select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value)}>
                    <option value="">Todos</option>
-                   <option value="Em aberto">Em aberto</option>
+                  <option value="Pendente">Pendente</option>
                    <option value="Faturado">Faturado</option>
+                  <option value="Enviado">Enviado</option>
                    <option value="Entregue">Entregue</option>
+                  <option value="Cancelado">Cancelado</option>
+                  <option value="Dados incompletos">Dados incompletos</option>
                  </Form.Select>
                </Col>
              </Row>
@@ -168,14 +177,8 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
          </Card>
        </section>
  
-       <section className="pedidos-lista py-3">
+      <section className="pedidos-lista pt-0 pb-3">
          <Card className="border-0 shadow-sm">
-           <Card.Header className="bg-white d-flex justify-content-between align-items-center">
-             <div className="fw-semibold">{labelPlural}</div>
-             <Button size="sm" onClick={() => router.push(newPath)}>
-               <IconifyIcon icon="ri:add-line" className="me-1" /> Novo {entity === 'proposta' ? 'Proposta' : 'Pedido'}
-             </Button>
-           </Card.Header>
            <Card.Body>
              <div className="table-responsive">
                <Table hover className="mb-0">
@@ -200,13 +203,13 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                          <td>{p.cnpj}</td>
                          <td>{p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                          <td>
-                          {p.status === 'Pago' && (<Badge bg="success">{p.status}</Badge>)}
                           {p.status === 'Faturado' && (<Badge bg="success">{p.status}</Badge>)}
-                          {p.status === 'Em aberto' && (<Badge bg="warning">{p.status}</Badge>)}
+                          {p.status === 'Enviado' && (<Badge bg="primary">{p.status}</Badge>)}
                           {p.status === 'Pendente' && (<Badge bg="warning" text="dark">{p.status}</Badge>)}
-                          {p.status === 'Entregue' && (<Badge bg="primary">{p.status}</Badge>)}
+                          {p.status === 'Entregue' && (<Badge bg="info">{p.status}</Badge>)}
                           {p.status === 'Cancelado' && (<Badge bg="danger">{p.status}</Badge>)}
-                          {p.status === 'Proposta' && (<Badge bg="info" text="dark">{p.status}</Badge>)}
+                          {p.status === 'Dados incompletos' && (<Badge bg="secondary">{p.status}</Badge>)}
+                          {p.status === 'Proposta' && (<Badge bg="dark">{p.status}</Badge>)}
                          </td>
                          <td>
                            <div className="d-flex gap-2">

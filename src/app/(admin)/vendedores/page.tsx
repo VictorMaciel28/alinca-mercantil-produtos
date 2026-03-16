@@ -101,60 +101,64 @@ export default function VendedoresPage() {
 
   return (
     <div className="p-3">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h2 className="m-0">Vendedores</h2>
-        <button className="btn btn-primary" onClick={onSync} disabled={syncing}>
-          {syncing ? 'Atualizando...' : 'Atualizar Vendedores'}
-        </button>
-      </div>
+      <div className="card border-0 shadow-sm">
+        <div className="card-body">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <h2 className="m-0">Vendedores</h2>
+            <button className="btn btn-primary" onClick={onSync} disabled={syncing}>
+              {syncing ? 'Atualizando...' : 'Atualizar Vendedores'}
+            </button>
+          </div>
 
-      {loading ? (
-        <div>Carregando...</div>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-sm table-striped table-hover">
-            <thead>
-              <tr>
-                <th>ID Externo</th>
-                <th>Nome</th>
-                <th>Email</th>
-                  <th>Tipo de Acesso</th>
-                <th>Nível de Acesso</th>
-                <th style={{ width: 1 }}>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((v) => (
-                <tr
-                  key={v.id}
-                  style={{ cursor: v.id_vendedor_externo ? 'pointer' : 'default' }}
-                  onClick={() => {
-                    if (!v.id_vendedor_externo) return
-                    router.push(`/vendedores/${v.id_vendedor_externo}`)
-                  }}
-                >
-                  <td>{v.id_vendedor_externo ?? '-'}</td>
-                  <td>{v.nome}</td>
-                  <td>{v.email ?? '-'}</td>
-                  <td>{v.tipo_acesso ? (v.tipo_acesso === 'TELEVENDAS' ? 'Televendas' : 'Vendedor') : '-'}</td>
-                  <td>{v.nivel_acesso ? (v.nivel_acesso === 'ADMINISTRADOR' ? 'Administrador' : 'Supervisor') : '-'}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-secondary"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openEdit(v)
+          {loading ? (
+            <div>Carregando...</div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-sm table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>ID Externo</th>
+                    <th>Nome</th>
+                    <th>Email</th>
+                      <th>Tipo de Acesso</th>
+                    <th>Nível de Acesso</th>
+                    <th style={{ width: 1 }}>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((v) => (
+                    <tr
+                      key={v.id}
+                      style={{ cursor: v.id_vendedor_externo ? 'pointer' : 'default' }}
+                      onClick={() => {
+                        if (!v.id_vendedor_externo) return
+                        router.push(`/vendedores/${v.id_vendedor_externo}`)
                       }}
                     >
-                      Editar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <td>{v.id_vendedor_externo ?? '-'}</td>
+                      <td>{v.nome}</td>
+                      <td>{v.email ?? '-'}</td>
+                      <td>{v.tipo_acesso ? (v.tipo_acesso === 'TELEVENDAS' ? 'Televendas' : 'Vendedor') : '-'}</td>
+                      <td>{v.nivel_acesso ? (v.nivel_acesso === 'ADMINISTRADOR' ? 'Administrador' : 'Supervisor') : '-'}</td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEdit(v)
+                          }}
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {showModal && (
         <div className="modal d-block" tabIndex={-1} role="dialog">

@@ -147,39 +147,43 @@ export default function CondicoesPagamentoPage() {
 
   return (
     <div className="py-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <div>
-          <h4 className="mb-0">Condições de pagamento</h4>
-          <small className="text-muted">Gerencie condições e adicional administrativo (%)</small>
-        </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="row g-2">
-          <div className="col-12">
-            <div className="list-group">
-              {rows.map((r, idx) => (
-                <div key={(r.id ?? 'new') + '_' + idx} className="list-group-item d-flex align-items-center gap-2">
-                  <div className="flex-grow-1 row g-2 align-items-center">
-                    <div className="col-md-6">
-                      <input className="form-control" value={r.name} onChange={(e) => handleChange(idx, 'name', e.target.value)} placeholder="Condição (ex: 14/21D)" />
-                    </div>
-                    <div className="col-md-5">
-                      <input className="form-control" value={String(r.percent ?? '')} onChange={(e) => handleChange(idx, 'percent', e.target.value)} placeholder="Adicional administrativo (%)" />
-                    </div>
-                    <div className="col-md-1 d-flex justify-content-end">
-                      <button type="button" className="btn btn-sm btn-danger" title="Remover" onClick={() => handleRemove(idx)}>✕</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {rows.length === 0 && <div className="list-group-item text-muted">Nenhuma condição cadastrada</div>}
+      <div className="card border-0 shadow-sm">
+        <div className="card-body">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <div>
+              <h4 className="mb-0">Condições de pagamento</h4>
+              <small className="text-muted">Gerencie condições e adicional administrativo (%)</small>
             </div>
           </div>
-        </div>
 
-        <div className="mt-3 d-flex gap-2">
-          <button type="button" className="btn btn-primary" onClick={handleAdd}>Adicionar</button>
+          <div className="mb-3">
+            <div className="row g-2">
+              <div className="col-12">
+                <div className="list-group">
+                  {rows.map((r, idx) => (
+                    <div key={(r.id ?? 'new') + '_' + idx} className="list-group-item d-flex align-items-center gap-2">
+                      <div className="flex-grow-1 row g-2 align-items-center">
+                        <div className="col-md-6">
+                          <input className="form-control" value={r.name} onChange={(e) => handleChange(idx, 'name', e.target.value)} placeholder="Condição (ex: 14/21D)" />
+                        </div>
+                        <div className="col-md-5">
+                          <input className="form-control" value={String(r.percent ?? '')} onChange={(e) => handleChange(idx, 'percent', e.target.value)} placeholder="Adicional administrativo (%)" />
+                        </div>
+                        <div className="col-md-1 d-flex justify-content-end">
+                          <button type="button" className="btn btn-sm btn-danger" title="Remover" onClick={() => handleRemove(idx)}>✕</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {rows.length === 0 && <div className="list-group-item text-muted">Nenhuma condição cadastrada</div>}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 d-flex gap-2">
+              <button type="button" className="btn btn-primary" onClick={handleAdd}>Adicionar</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

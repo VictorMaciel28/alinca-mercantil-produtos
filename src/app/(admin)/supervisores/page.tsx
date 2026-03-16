@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from 'react'
+import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
 type Supervisor = {
   id: number
@@ -87,6 +88,42 @@ export default function SupervisoresPage() {
     setVendSelected((prev) => prev.filter((v) => v.externo !== externo))
   }
 
+  const renderVendorPills = (items: { externo: string; nome?: string | null }[], removable = false) => {
+    if (!items.length) return <span className="text-muted">-</span>
+    return (
+      <div className="d-flex flex-wrap gap-2">
+        {items.map((v) => (
+          <span
+            key={v.externo}
+            className="badge d-inline-flex align-items-center gap-2"
+            style={{
+              backgroundColor: '#dbeafe',
+              color: '#1e3a8a',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              padding: '0.5rem 0.7rem',
+              border: '1px solid #bfdbfe',
+              borderRadius: '0.5rem',
+            }}
+          >
+            {(v.nome || v.externo)} <small>({v.externo})</small>
+            {removable ? (
+              <button
+                type="button"
+                className="btn btn-sm p-0 border-0 bg-transparent"
+                style={{ color: '#1e40af', lineHeight: 1, fontSize: '1rem' }}
+                onClick={() => removeVendedor(v.externo)}
+                aria-label={`Remover ${v.nome || v.externo}`}
+              >
+                ×
+              </button>
+            ) : null}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
   const save = async () => {
     if (!supSelected) return alert('Selecione um supervisor')
     const payload = {
@@ -103,52 +140,56 @@ export default function SupervisoresPage() {
 
   return (
     <div className="p-3">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h2 className="m-0">Supervisores</h2>
-        <button className="btn btn-primary" onClick={openNew}>Novo Supervisor</button>
-      </div>
+      <div className="card border-0 shadow-sm">
+        <div className="card-body">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <h2 className="m-0">Supervisores</h2>
+            <button className="btn btn-primary" onClick={openNew}>Novo Supervisor</button>
+          </div>
 
-      {loading ? (
-        <div>Carregando...</div>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-sm table-striped">
-            <thead>
-              <tr>
-                <th>Supervisor (ID Externo)</th>
-                <th>Nome</th>
-                <th>Vendedores supervisionados</th>
-                <th style={{ width: 1 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {supers.map((s) => (
-                <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(s)}>
-                  <td>{s.id_vendedor_externo}</td>
-                  <td>{s.nome || '-'}</td>
-                  <td>{s.supervised.map((v) => v.nome || v.vendedor_externo).join(', ') || '-'}</td>
-                  <td className="text-end">
-                    <button
-                      className="btn btn-sm btn-danger"
-                      title="Excluir"
-                      onClick={async (e) => {
-                        e.stopPropagation()
-                        if (!confirm('Deseja excluir este supervisor?')) return
-                        const res = await fetch('/api/supervisores', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) })
-                        const json = await res.json()
-                        if (!json?.ok) return alert(json?.error || 'Erro ao excluir')
-                        await load()
-                      }}
-                    >
-                      🗑️
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {loading ? (
+            <div>Carregando...</div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Supervisor (ID Externo)</th>
+                    <th>Nome</th>
+                    <th>Vendedores supervisionados</th>
+                    <th style={{ width: 1 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supers.map((s) => (
+                    <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(s)}>
+                      <td>{s.id_vendedor_externo}</td>
+                      <td>{s.nome || '-'}</td>
+                      <td>{renderVendorPills(s.supervised.map((v) => ({ externo: v.vendedor_externo, nome: v.nome })))}</td>
+                      <td className="text-end">
+                        <button
+                          className="btn btn-sm btn-danger"
+                          title="Excluir"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!confirm('Deseja excluir este supervisor?')) return
+                            const res = await fetch('/api/supervisores', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id }) })
+                            const json = await res.json()
+                            if (!json?.ok) return alert(json?.error || 'Erro ao excluir')
+                            await load()
+                          }}
+                        >
+                          <IconifyIcon icon="ri:delete-bin-line" className="text-white" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {showModal && (
         <div className="modal d-block" tabIndex={-1}>
@@ -187,14 +228,7 @@ export default function SupervisoresPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="d-flex flex-wrap gap-2">
-                    {vendSelected.map((v) => (
-                      <span key={v.externo} className="badge bg-primary d-flex align-items-center gap-2">
-                        {v.nome} ({v.externo})
-                        <button className="btn btn-sm btn-light ms-2" onClick={() => removeVendedor(v.externo)}>x</button>
-                      </span>
-                    ))}
-                  </div>
+                  {renderVendorPills(vendSelected, true)}
                 </div>
               </div>
               <div className="modal-footer">

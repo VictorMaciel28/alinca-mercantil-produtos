@@ -19,6 +19,9 @@ type TinyVendedor = {
   situacao?: string
 }
 
+const CACHE_TTL_MS = 5 * 60 * 1000
+let tinyVendedoresCache: { fetchedAt: number; data: TinyVendedor[] } | null = null
+
 async function fetchTinyVendedoresPage(pagina: number) {
   const token = process.env.TINY_API_TOKEN
   if (!token) throw new Error('Token da API não configurado')
@@ -46,64 +49,64 @@ async function fetchTinyVendedoresPage(pagina: number) {
 
 export async function POST() {
   try {
-    // First: collect all vendedores from Tiny (all pages) into an array
-    let pagina = 1
-    let numero_paginas = 1
-    const tinyAll: { vendedor: TinyVendedor }[] = []
-    while (pagina <= numero_paginas) {
-      const retorno = await fetchTinyVendedoresPage(pagina)
-      numero_paginas = retorno?.numero_paginas ?? 1
-      const vendedores: { vendedor: TinyVendedor }[] = retorno?.vendedores ?? []
-      for (const v of vendedores) {
-        const vd = v?.vendedor || {}
-        if (!vd?.id || !vd?.nome) continue
-        tinyAll.push({ vendedor: vd })
+    const now = Date.now()
+
+    // 1) Load Tiny vendors using short-lived cache
+    let tinyRows: TinyVendedor[] = []
+    if (tinyVendedoresCache && now - tinyVendedoresCache.fetchedAt < CACHE_TTL_MS) {
+      tinyRows = tinyVendedoresCache.data
+    } else {
+      let pagina = 1
+      let numero_paginas = 1
+      const fetched: TinyVendedor[] = []
+      while (pagina <= numero_paginas) {
+        const retorno = await fetchTinyVendedoresPage(pagina)
+        numero_paginas = retorno?.numero_paginas ?? 1
+        const vendedores: { vendedor: TinyVendedor }[] = retorno?.vendedores ?? []
+        for (const v of vendedores) {
+          const vd = v?.vendedor || {}
+          if (!vd?.id || !vd?.nome) continue
+          fetched.push(vd)
+        }
+        pagina += 1
       }
-      pagina += 1
+      tinyRows = fetched
+      tinyVendedoresCache = { fetchedAt: now, data: fetched }
     }
 
-    // Build maps and lists for efficient DB operations
-    const externals = Array.from(new Set(tinyAll.map((t) => String(t.vendedor.id))))
-    const existingVendors = externals.length > 0 ? await prisma.vendedor.findMany({ where: { id_vendedor_externo: { in: externals } } }) : []
-    const existingByExternal = new Map(existingVendors.map((e) => [e.id_vendedor_externo, e]))
+    // 2) Read all vendors from DB and add only missing ones by external id
+    const existingVendors = await prisma.vendedor.findMany({
+      select: { id_vendedor_externo: true },
+    })
+    const existingExternalSet = new Set(
+      existingVendors
+        .map((e) => (e.id_vendedor_externo || '').trim())
+        .filter((x): x is string => !!x)
+    )
 
     const toCreate: any[] = []
-    const toUpdate: { id: number; data: any }[] = []
-
-    for (const t of tinyAll) {
-      const vd = t.vendedor
+    for (const vd of tinyRows) {
       const externo = String(vd.id)
-      const data = {
+      if (existingExternalSet.has(externo)) continue
+      toCreate.push({
         id_vendedor_externo: externo,
         nome: vd.nome,
         email: vd.email ?? null,
-      }
-      const existing = existingByExternal.get(externo)
-      if (existing) {
-        toUpdate.push({ id: existing.id, data })
-      } else {
-        toCreate.push(data)
-      }
+      })
+      existingExternalSet.add(externo)
     }
 
-    // Perform DB writes: createMany for new, parallel updates for existing
+    // 3) Persist only new records
     let created = 0
-    let updated = 0
     if (toCreate.length > 0) {
-      // createMany ignores duplicates; safe to use
       await prisma.vendedor.createMany({ data: toCreate })
       created = toCreate.length
     }
 
-    if (toUpdate.length > 0) {
-      // run updates in parallel (transaction could be used if desired)
-      await Promise.all(
-        toUpdate.map((u) => prisma.vendedor.update({ where: { id: u.id }, data: u.data }))
-      )
-      updated = toUpdate.length
-    }
+    const updated = 0
 
-    return NextResponse.json({ ok: true, created, updated })
+    // keep response keys compatible with existing UIs
+    return NextResponse.json({ ok: true, created, imported: created, updated, cached: !!tinyVendedoresCache && now - tinyVendedoresCache.fetchedAt < CACHE_TTL_MS })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao atualizar vendedores' }, { status: 500 })
   }

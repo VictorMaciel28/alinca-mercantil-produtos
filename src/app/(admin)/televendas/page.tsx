@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from 'react'
+import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
 type Linha = { id: number; id_vendedor_externo: string; nome?: string | null; cidades: string[] }
 type Vendedor = { id: number; id_vendedor_externo?: string | null; nome: string }
@@ -93,52 +94,56 @@ export default function TelevendasPage() {
 
   return (
     <div className="p-3">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h2 className="m-0">Televendas</h2>
-        <button className="btn btn-primary" onClick={openNew}>Novo Televendas</button>
-      </div>
+      <div className="card border-0 shadow-sm">
+        <div className="card-body">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <h2 className="m-0">Televendas</h2>
+            <button className="btn btn-primary" onClick={openNew}>Novo Televendas</button>
+          </div>
 
-      {loading ? (
-        <div>Carregando...</div>
-      ) : (
-        <div className="table-responsive">
-          <table className="table table-sm table-striped table-hover">
-            <thead>
-              <tr>
-                <th>ID Externo</th>
-                <th>Nome</th>
-                <th>Cidades Atribuídas</th>
-                <th style={{ width: 1 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(r)}>
-                  <td>{r.id_vendedor_externo}</td>
-                  <td>{r.nome || '-'}</td>
-                  <td>{(r.cidades || []).join(', ')}</td>
-                  <td className="text-end">
-                    <button
-                      className="btn btn-sm btn-danger"
-                      title="Excluir"
-                      onClick={async (e) => {
-                        e.stopPropagation()
-                        if (!confirm('Deseja excluir este registro?')) return
-                        const res = await fetch('/api/televendas', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id }) })
-                        const json = await res.json()
-                        if (!json?.ok) return alert(json?.error || 'Erro ao excluir')
-                        await load()
-                      }}
-                    >
-                      🗑️
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {loading ? (
+            <div>Carregando...</div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-sm table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>ID Externo</th>
+                    <th>Nome</th>
+                    <th>Cidades Atribuídas</th>
+                    <th style={{ width: 1 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(r)}>
+                      <td>{r.id_vendedor_externo}</td>
+                      <td>{r.nome || '-'}</td>
+                      <td>{(r.cidades || []).join(', ')}</td>
+                      <td className="text-end">
+                        <button
+                          className="btn btn-sm btn-danger"
+                          title="Excluir"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!confirm('Deseja excluir este registro?')) return
+                            const res = await fetch('/api/televendas', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id }) })
+                            const json = await res.json()
+                            if (!json?.ok) return alert(json?.error || 'Erro ao excluir')
+                            await load()
+                          }}
+                        >
+                          <IconifyIcon icon="ri:delete-bin-line" className="text-white" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {showModal && (
         <div className="modal d-block" tabIndex={-1}>

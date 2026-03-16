@@ -572,12 +572,25 @@ html[data-menu-size="hidden"] {
           margin-left: calc($main-nav-width * -1);
      }
 
+     .topbar {
+          margin-left: 0;
+          transition: margin-left 0.3s ease-in-out;
+     }
+
      .page-content {
           margin-left: 0;
           border-left: 10px solid $main-nav-bg;
      }
 
      &.sidebar-enable {
+          .topbar {
+               margin-left: $main-nav-width;
+          }
+
+          .page-content {
+               margin-left: $main-nav-width;
+          }
+
           .main-nav {
                margin-left: 0;
                z-index: 1055;

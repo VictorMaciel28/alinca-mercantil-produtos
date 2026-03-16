@@ -9,33 +9,26 @@ export async function GET() {
     if (!session?.user?.id) return NextResponse.json({ ok: true, data: [] })
 
     const userEmail = session.user.email || null
-    // Resolve vendedor for this session user (prefer lookup by email). Fallback: numeric session.user.id if it looks like a vendedor id.
-    let vendedorId: number | null = null
+    // Resolve external vendor for this session user.
     let id_vendedor_externo: string | null = null
     let isAdmin = false
     if (userEmail) {
       const vendRecord = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-      vendedorId = vendRecord?.id ?? null
       id_vendedor_externo = vendRecord?.id_vendedor_externo ?? null
       if (vendRecord?.id_vendedor_externo) {
         const nivel = await prisma.vendedor_nivel_acesso.findUnique({ where: { id_vendedor_externo: vendRecord.id_vendedor_externo } }).catch(() => null)
         if (nivel?.nivel === 'ADMINISTRADOR') isAdmin = true
       }
     }
-    if (!vendedorId && session.user?.id) {
-      const maybe = Number(session.user.id)
-      vendedorId = Number.isNaN(maybe) ? null : maybe
-    }
-
     let rows
     if (isAdmin) {
       rows = await prisma.platform_order.findMany({ where: { status: 'PROPOSTA' as any }, orderBy: { created_at: 'desc' } })
     } else {
-      if (!vendedorId) return NextResponse.json({ ok: true, data: [] })
+      if (!id_vendedor_externo) return NextResponse.json({ ok: true, data: [] })
       rows = await prisma.platform_order.findMany({
         where: {
           status: 'PROPOSTA' as any,
-          OR: id_vendedor_externo ? [{ vendedor_id: vendedorId }, { id_vendedor_externo }] : [{ vendedor_id: vendedorId }],
+          id_vendedor_externo,
         },
         orderBy: { created_at: 'desc' },
       })
@@ -76,17 +69,13 @@ export async function POST(req: Request) {
     const session = (await getServerSession(options as any)) as any
     if (!session?.user?.id) return NextResponse.json({ ok: false, error: 'Não autenticado' }, { status: 401 })
     const userEmail = session.user.email || null
-    // Resolve vendedor id for this session user
-    let vendedorId: number | null = null
+    // Resolve vendedor externo for this session user
+    let vendedorExternoFromSession: string | null = null
     if (userEmail) {
       const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-      vendedorId = vend?.id ?? null
+      vendedorExternoFromSession = vend?.id_vendedor_externo ?? null
     }
-    if (!vendedorId && session.user?.id) {
-      const maybe = Number(session.user.id)
-      vendedorId = Number.isNaN(maybe) ? null : maybe
-    }
-    if (!vendedorId) return NextResponse.json({ ok: false, error: 'Usuário não é vendedor autenticado' }, { status: 401 })
+    if (!vendedorExternoFromSession) return NextResponse.json({ ok: false, error: 'Usuário não é vendedor autenticado' }, { status: 401 })
 
     const body = await req.json()
     const dataStr = (body?.data || '').toString().slice(0, 10)
@@ -102,7 +91,13 @@ export async function POST(req: Request) {
     }
     const total = Number(body?.total || 0)
     const id_vendedor_externo =
-      body?.id_vendedor_externo != null ? body.id_vendedor_externo?.toString?.().trim?.() || null : null
+      body?.vendedor?.id != null
+        ? body.vendedor.id?.toString?.().trim?.() || null
+        : body?.id_vendedor_externo != null
+        ? body.id_vendedor_externo?.toString?.().trim?.() || null
+        : vendedorExternoFromSession
+    const idClientStr = body?.idContato != null ? body.idContato?.toString?.().trim?.() || '' : ''
+    const id_client_externo = /^\d+$/.test(idClientStr) && idClientStr !== '0' ? BigInt(idClientStr) : null
     const client_vendor_externo: string | null =
       body?.client_vendor_externo != null ? body.client_vendor_externo?.toString?.().trim?.() || null : null
 
@@ -123,8 +118,8 @@ export async function POST(req: Request) {
         total,
         status: 'PROPOSTA' as any,
         id_vendedor_externo: id_vendedor_externo,
+        id_client_externo: id_client_externo,
         client_vendor_externo: client_vendor_externo,
-        vendedor_id: vendedorId,
       },
     })
 
@@ -165,25 +160,21 @@ export async function DELETE(req: Request) {
 
     // resolve vendedor/admin
     const userEmail = session.user.email || null
-    let vendedorId: number | null = null
+    let vendedorExterno: string | null = null
     let isAdmin = false
     if (userEmail) {
       const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-      vendedorId = vend?.id ?? null
+      vendedorExterno = vend?.id_vendedor_externo ?? null
       if (vend?.id_vendedor_externo) {
         const nivel = await prisma.vendedor_nivel_acesso.findUnique({ where: { id_vendedor_externo: vend.id_vendedor_externo } }).catch(() => null)
         if (nivel?.nivel === 'ADMINISTRADOR') isAdmin = true
       }
     }
-    if (!vendedorId && session.user?.id) {
-      const maybe = Number(session.user.id)
-      vendedorId = Number.isNaN(maybe) ? null : maybe
-    }
-    if (!vendedorId && !isAdmin) return NextResponse.json({ ok: false, error: 'Usuário sem permissão' }, { status: 403 })
+    if (!vendedorExterno && !isAdmin) return NextResponse.json({ ok: false, error: 'Usuário sem permissão' }, { status: 403 })
 
     const row = await prisma.platform_order.findUnique({ where: { numero } })
     if (!row || row.status !== ('PROPOSTA' as any)) return NextResponse.json({ ok: false, error: 'Proposta não encontrada' }, { status: 404 })
-    if (!isAdmin && row.vendedor_id !== vendedorId) return NextResponse.json({ ok: false, error: 'Proposta não encontrada' }, { status: 404 })
+    if (!isAdmin && row.id_vendedor_externo !== vendedorExterno) return NextResponse.json({ ok: false, error: 'Proposta não encontrada' }, { status: 404 })
 
     await prisma.platform_order.delete({ where: { numero } })
     return NextResponse.json({ ok: true })

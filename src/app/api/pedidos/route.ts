@@ -10,41 +10,30 @@ export async function GET() {
     if (!session?.user?.id) return NextResponse.json({ ok: true, data: [] })
 
     const userEmail = session.user.email || null
-    // Resolve vendedor for this session user (prefer lookup by email). Fallback: numeric session.user.id if it looks like a vendedor id.
-    let vendedorId: number | null = null
+    // Resolve external vendor id for this session user.
     let id_vendedor_externo: string | null = null
     let isAdmin = false
     let vendRecord = null
     if (userEmail) {
       vendRecord = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-      vendedorId = vendRecord?.id ?? null
       id_vendedor_externo = vendRecord?.id_vendedor_externo ?? null
       if (vendRecord?.id_vendedor_externo) {
         const nivel = await prisma.vendedor_nivel_acesso.findUnique({ where: { id_vendedor_externo: vendRecord.id_vendedor_externo } }).catch(() => null)
         if (nivel?.nivel === 'ADMINISTRADOR') isAdmin = true
       }
     }
-    if (!vendedorId && session.user?.id) {
-      const maybe = Number(session.user.id)
-      vendedorId = Number.isNaN(maybe) ? null : maybe
-    }
-
     // If admin, return all orders
     let rows
     if (isAdmin) {
       rows = await prisma.platform_order.findMany({ where: { NOT: { status: 'PROPOSTA' as any } }, orderBy: { created_at: 'desc' } })
     } else {
-      // If we couldn't resolve a vendedor id, return empty result (no access)
-      if (!vendedorId) return NextResponse.json({ ok: true, data: [] })
+      // If we couldn't resolve an external vendor id, return empty result (no access)
+      if (!id_vendedor_externo) return NextResponse.json({ ok: true, data: [] })
 
       rows = await prisma.platform_order.findMany({
         where: {
           NOT: { status: 'PROPOSTA' as any },
-          ...(id_vendedor_externo
-            ? {
-                OR: [{ vendedor_id: vendedorId }, { id_vendedor_externo }],
-              }
-            : { vendedor_id: vendedorId }),
+          id_vendedor_externo,
         },
         orderBy: { created_at: 'desc' },
       })
@@ -61,14 +50,14 @@ export async function GET() {
         ? 'Proposta'
         : r.status === 'PENDENTE'
         ? 'Pendente'
-        : r.status === 'PAGO'
-        ? 'Pago'
         : r.status === 'CANCELADO'
         ? 'Cancelado'
         : r.status === 'FATURADO'
         ? 'Faturado'
-        : r.status === 'EM_ABERTO'
-        ? 'Em aberto'
+        : r.status === 'ENVIADO'
+        ? 'Enviado'
+        : r.status === 'DADOS_INCOMPLETOS'
+        ? 'Dados incompletos'
         : 'Entregue',
       id_vendedor_externo: r.id_vendedor_externo,
     }))
@@ -84,17 +73,6 @@ export async function POST(req: Request) {
     const session = (await getServerSession(options as any)) as any
     if (!session?.user?.id) return NextResponse.json({ ok: false, error: 'Não autenticado' }, { status: 401 })
     const userEmail = session.user.email || null
-    // Resolve vendedor.id for this session user (prefer vendor email lookup). Fallback: numeric session.user.id if it seems to be a vendedor id.
-    let vendedorId: number | null = null
-    if (userEmail) {
-      const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
-      vendedorId = vend?.id ?? null
-    }
-    if (!vendedorId && session.user?.id) {
-      const maybe = Number(session.user.id)
-      vendedorId = Number.isNaN(maybe) ? null : maybe
-    }
-
     const body = await req.json()
     const numeroInput = Number(body?.numero || 0)
     const dataStr = (body?.data || '').toString().slice(0, 10)
@@ -115,12 +93,13 @@ export async function POST(req: Request) {
     if (!cliente) return NextResponse.json({ ok: false, error: 'Cliente obrigatório' }, { status: 400 })
 
     const statusMap: Record<string, any> = {
+      Proposta: 'PROPOSTA',
       Pendente: 'PENDENTE',
-      Pago: 'PAGO',
       Cancelado: 'CANCELADO',
       Faturado: 'FATURADO',
-      'Em aberto': 'EM_ABERTO',
+      Enviado: 'ENVIADO',
       Entregue: 'ENTREGUE',
+      'Dados incompletos': 'DADOS_INCOMPLETOS',
     }
 
     const status = statusMap[statusStr] ?? 'PENDENTE'
@@ -150,8 +129,11 @@ export async function POST(req: Request) {
 
     const toIsoDate = (s: any) => (s ? String(s).slice(0, 10) : new Date().toISOString().slice(0, 10))
     const rawCliente = typeof body?.cliente === 'object' ? body?.cliente : null
-    const idContatoRaw = rawCliente?.id ?? rawCliente?.idContato ?? rawCliente?.external_id ?? null
-    const idContato = idContatoRaw != null ? Number(idContatoRaw) : null
+    const idContatoRaw = rawCliente?.idContato ?? rawCliente?.external_id ?? body?.idContato ?? 0
+    const idContatoStr = idContatoRaw != null ? String(idContatoRaw).trim() : '0'
+    const idContatoDb = /^\d+$/.test(idContatoStr) && idContatoStr !== '0' ? BigInt(idContatoStr) : null
+    const idContatoNum = Number(idContatoStr)
+    const idContato = Number.isFinite(idContatoNum) && idContatoNum > 0 ? idContatoNum : 0
     const vendedorTinyId = id_vendedor_externo != null ? Number(id_vendedor_externo) : null
     const endereco = endereco_entrega || {}
 
@@ -194,7 +176,7 @@ export async function POST(req: Request) {
         uf: endereco?.uf || '',
       },
     }
-    if (idContato && !Number.isNaN(idContato)) pedidoV3.idContato = idContato
+    pedidoV3.idContato = idContato
     pedidoV3.vendedor = { id: vendedorTinyId }
     if (body?.pagamento && typeof body.pagamento === 'object') {
       pedidoV3.pagamento = body.pagamento
@@ -222,13 +204,13 @@ export async function POST(req: Request) {
         const platformNumero = Number(tinyNumero)
         // Map status string to platform enum
         const statusMap: Record<string, any> = {
+          Proposta: 'PROPOSTA',
           Pendente: 'PENDENTE',
-          Pago: 'PAGO',
           Cancelado: 'CANCELADO',
           Faturado: 'FATURADO',
-          'Em aberto': 'EM_ABERTO',
+          Enviado: 'ENVIADO',
           Entregue: 'ENTREGUE',
-          Proposta: 'PROPOSTA',
+          'Dados incompletos': 'DADOS_INCOMPLETOS',
         }
 
         const platformStatus = statusMap[(body?.status as string) || 'Pendente'] ?? 'PENDENTE'
@@ -245,6 +227,7 @@ export async function POST(req: Request) {
           condicao_pagamento,
           endereco_entrega,
           id_vendedor_externo: id_vendedor_externo,
+          id_client_externo: idContatoDb,
           client_vendor_externo: client_vendor_externo,
         }
         // do not store tiny_id directly on platform_order (no such column)
@@ -253,21 +236,13 @@ export async function POST(req: Request) {
         const existing = await prisma.platform_order.findUnique({ where: { numero: platformNumero } })
         let savedOrder
         if (existing) {
-          // For update, connect vendedor relation if vendedorId provided
           const updateData: any = { ...baseOrderData }
-          if (vendedorId) {
-            updateData.vendedor = { connect: { id: vendedorId } }
-          }
           savedOrder = await prisma.platform_order.update({
             where: { numero: platformNumero },
             data: updateData,
           })
         } else {
-          // For create, include vendedor relation connect when available
           const createData: any = { ...baseOrderData }
-          if (vendedorId) {
-            createData.vendedor = { connect: { id: vendedorId } }
-          }
           savedOrder = await prisma.platform_order.create({ data: createData })
         }
 

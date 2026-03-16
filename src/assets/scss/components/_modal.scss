@@ -52,3 +52,8 @@
         color: $white !important;
     }
 }
+
+// Backdrop for manually rendered modals (e.g. className="modal d-block")
+.modal.d-block {
+    background-color: rgba(var(--#{$prefix}black-rgb), 0.7);
+}

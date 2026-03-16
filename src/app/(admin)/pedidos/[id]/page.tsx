@@ -8,6 +8,32 @@ import { getPedidoByNumero, Pedido, PedidoStatus, getNextPedidoNumero, savePedid
 import { createProposta } from '@/services/propostas'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
+const requestCache = new Map<string, { ts: number; data: any }>()
+const requestInFlight = new Map<string, Promise<any>>()
+
+async function fetchJsonCached(url: string, ttlMs = 4000) {
+  const now = Date.now()
+  const cached = requestCache.get(url)
+  if (cached && now - cached.ts < ttlMs) return cached.data
+
+  const inFlight = requestInFlight.get(url)
+  if (inFlight) return inFlight
+
+  const p = (async () => {
+    const res = await fetch(url)
+    const json = await res.json().catch(() => null)
+    requestCache.set(url, { ts: Date.now(), data: json })
+    return json
+  })()
+
+  requestInFlight.set(url, p)
+  try {
+    return await p
+  } finally {
+    requestInFlight.delete(url)
+  }
+}
+
 export default function PedidoFormPage() {
   const params = useParams()
   const router = useRouter()
@@ -28,6 +54,7 @@ export default function PedidoFormPage() {
   const [formaRecebimento, setFormaRecebimento] = useState('Boleto')
   const [condicaoPagamento, setCondicaoPagamento] = useState('')
   const [descontoPercent, setDescontoPercent] = useState<number>(0)
+  const [receiveForms, setReceiveForms] = useState<Array<{ id: number; nome: string; situacao: number }>>([])
 
   type ItemPedido = { id: number; nome: string; sku?: string; quantidade: number; unidade: string; preco: number; estoque?: number; produtoId?: number; imagemUrl?: string }
   const [itens, setItens] = useState<ItemPedido[]>([])
@@ -154,6 +181,7 @@ export default function PedidoFormPage() {
   } | null>(null)
 
   useEffect(() => {
+    if (!isNew) return
     ;(async () => {
       try {
         const res = await fetch('/api/me/vendedor')
@@ -161,7 +189,7 @@ export default function PedidoFormPage() {
         if (j?.ok) setMeVendedor(j.data)
       } catch {}
     })()
-  }, [])
+  }, [isNew])
 
   // Submissão Tiny
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -249,6 +277,35 @@ export default function PedidoFormPage() {
             cidade: addr?.cidade || '',
             uf: addr?.uf || '',
           })
+
+          const linkedVendedor = (existing as any)?.selected_vendedor
+          if (linkedVendedor?.id_vendedor_externo) {
+            setMeVendedor({
+              id_vendedor_externo: String(linkedVendedor.id_vendedor_externo),
+              nome: linkedVendedor?.nome || null,
+              tipo: linkedVendedor?.tipo || null,
+            })
+          }
+
+          // Prefer local DB relation via platform_order.id_client_externo -> cliente.external_id.
+          const linkedClient = (existing as any)?.selected_client
+          if (linkedClient) {
+            setSelectedClient({
+              id: Number(linkedClient?.id ?? 0),
+              external_id: linkedClient?.external_id != null ? String(linkedClient.external_id) : null,
+              nome: linkedClient?.nome || '',
+              cpf_cnpj: linkedClient?.cpf_cnpj || '',
+              id_vendedor_externo: linkedClient?.id_vendedor_externo ?? null,
+              nome_vendedor: linkedClient?.nome_vendedor ?? null,
+              cidade: linkedClient?.cidade ?? null,
+              endereco: linkedClient?.endereco ?? null,
+              numero: linkedClient?.numero ?? null,
+              complemento: linkedClient?.complemento ?? null,
+              bairro: linkedClient?.bairro ?? null,
+              cep: linkedClient?.cep ?? null,
+              uf: linkedClient?.uf ?? null,
+            })
+          }
         }
       } else {
         setForm((f) => ({ ...f, numero: 0 }))
@@ -261,8 +318,7 @@ export default function PedidoFormPage() {
     const run = async (q: string) => {
       setCatalogLoading(true)
       try {
-        const res = await fetch(`/api/produtos?q=${encodeURIComponent(q)}`)
-        const data = await res.json()
+        const data = await fetchJsonCached(`/api/produtos?q=${encodeURIComponent(q)}`, 3000)
         const items: CatalogItem[] = (data?.retorno?.produtos || []).map((p: any) => ({
           id: Number(p?.produto?.id ?? 0),
           nome: p?.produto?.nome ?? '',
@@ -695,6 +751,7 @@ export default function PedidoFormPage() {
           total: totalComDesconto,
           forma_recebimento: formaRecebimento,
           condicao_pagamento: condicaoPagamento,
+          idContato: selectedClient?.external_id ? Number(selectedClient.external_id) : 0,
           vendedor: {
             id: Number(meVendedor?.id_vendedor_externo || 0),
           },
@@ -738,11 +795,11 @@ export default function PedidoFormPage() {
       }
 
       // Apenas salvar localmente na plataforma (pedido)
+      const idContato = selectedClient?.external_id ? Number(selectedClient.external_id) : 0
       const payloadToSend: any = {
         ...form,
         total: totalComDesconto,
-        forma_recebimento: formaRecebimento,
-        condicao_pagamento: condicaoPagamento,
+        idContato,
         vendedor: {
           id: Number(meVendedor?.id_vendedor_externo || 0),
         },
@@ -750,7 +807,7 @@ export default function PedidoFormPage() {
       payloadToSend.cliente =
         !payloadToSend.cliente || typeof payloadToSend.cliente === 'string'
           ? {
-              id: selectedClient?.external_id ? Number(selectedClient.external_id) : undefined,
+              id: idContato || undefined,
               external_id: selectedClient?.external_id || undefined,
               nome: String(form.cliente || '').trim(),
               cpf_cnpj: String(form.cnpj || '').trim(),
@@ -759,35 +816,34 @@ export default function PedidoFormPage() {
               ...(payloadToSend.cliente || {}),
               id:
                 payloadToSend.cliente.id ??
-                (selectedClient?.external_id ? Number(selectedClient.external_id) : undefined),
+                (idContato || undefined),
               external_id: payloadToSend.cliente.external_id ?? selectedClient?.external_id ?? undefined,
               cpf_cnpj: String(form.cnpj || '').trim(),
               nome: payloadToSend.cliente.nome || String(form.cliente || '').trim(),
             }
       delete payloadToSend.cnpj
+      delete payloadToSend.id_vendedor_externo
       payloadToSend.endereco_entrega = {
         ...deliveryAddress,
         endereco_diferente: isDifferentDeliveryAddress,
       }
-      if (parcelas && parcelas.length > 0) {
-        payloadToSend.pagamento = {
-          formaRecebimento: { id: 0 },
-          meioPagamento: { id: 0 },
-          parcelas: parcelas.map((p) => {
-            const baseDate = new Date(form.data || new Date().toISOString().slice(0, 10))
-            const due = new Date(p.data)
-            const ms = due.getTime() - baseDate.getTime()
-            const dias = Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)))
-            return {
-              dias,
-              data: due.toISOString().slice(0, 10),
-              valor: Number(p.valor || 0),
-              observacoes: '',
-              formaRecebimento: { id: 0 },
-              meioPagamento: { id: 0 },
-            }
-          }),
-        }
+      payloadToSend.pagamento = {
+        formaRecebimento: { id: selectedFormaRecebimentoId },
+        meioPagamento: { id: 0 },
+        parcelas: (parcelas || []).map((p) => {
+          const baseDate = new Date(form.data || new Date().toISOString().slice(0, 10))
+          const due = new Date(p.data)
+          const ms = due.getTime() - baseDate.getTime()
+          const dias = Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)))
+          return {
+            dias,
+            data: due.toISOString().slice(0, 10),
+            valor: Number(p.valor || 0),
+            observacoes: '',
+            formaRecebimento: { id: selectedFormaRecebimentoId },
+            meioPagamento: { id: 0 },
+          }
+        }),
       }
       if (itens && itens.length > 0) {
         const mappedItems = itens
@@ -845,8 +901,7 @@ export default function PedidoFormPage() {
     let mounted = true
     ;(async () => {
       try {
-        const res = await fetch('/api/condicoes-pagamento')
-        const json = await res.json()
+        const json = await fetchJsonCached('/api/condicoes-pagamento', 10000)
         if (mounted && json?.ok && Array.isArray(json.data)) {
           setPaymentConditions(
             json.data.map((r: any) => ({
@@ -865,10 +920,47 @@ export default function PedidoFormPage() {
     }
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const json = await fetchJsonCached('/api/tiny/receive-forms', 10000)
+        if (mounted && json?.ok && Array.isArray(json.data)) {
+          const forms = json.data
+            .map((r: any) => ({
+              id: Number(r.id),
+              nome: String(r.nome),
+              situacao: Number(r.situacao || 0),
+            }))
+            .filter((r: any) => r.id > 0 && r.situacao === 1)
+          setReceiveForms(forms)
+        }
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const selectedFormaRecebimentoId = useMemo(() => {
+    const found = receiveForms.find((f) => f.nome === formaRecebimento)
+    return found?.id ?? 0
+  }, [receiveForms, formaRecebimento])
+
   const condicoesPagamentoOptions = useMemo(() => {
-    if (formaRecebimento === 'Boleto') return paymentConditions.map((c) => c.name)
-    return ['À vista']
-  }, [formaRecebimento, paymentConditions])
+    const base =
+      formaRecebimento === 'Boleto'
+        ? paymentConditions.map((c) => c.name)
+        : ['À vista']
+
+    // Keep persisted condition visible even if not returned in current list.
+    if (condicaoPagamento && !base.includes(condicaoPagamento)) {
+      return [condicaoPagamento, ...base]
+    }
+    return base
+  }, [formaRecebimento, paymentConditions, condicaoPagamento])
 
   const diasParcelas: number[] = useMemo(() => {
     if (formaRecebimento !== 'Boleto') return []
@@ -1099,10 +1191,18 @@ export default function PedidoFormPage() {
             <Col lg={3}>
               <Form.Label>Forma de recebimento</Form.Label>
               <Form.Select value={formaRecebimento} onChange={(e) => { setFormaRecebimento(e.target.value); setCondicaoPagamento(''); setDescontoPercent(0) }}>
-                <option value="Boleto">Boleto</option>
-                <option value="Cartão de Crédito">Cartão de Crédito</option>
-                <option value="Pix">Pix</option>
-                <option value="Dinheiro">Dinheiro</option>
+                {receiveForms.length > 0 ? (
+                  receiveForms.map((rf) => (
+                    <option key={rf.id} value={rf.nome}>{rf.nome}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Boleto">Boleto</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Pix">Pix</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                  </>
+                )}
               </Form.Select>
             </Col>
             <Col lg={3}>
