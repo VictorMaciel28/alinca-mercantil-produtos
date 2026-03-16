@@ -202,11 +202,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'nota_not_found' }, { status: 404 })
   }
 
-  let commissionResult: any = null
-  try {
-    commissionResult = await recomputeCommissionsFromNota({ webhookPayload: json, nota })
-  } catch (e: any) {
-    commissionResult = { ok: false, reason: 'commission_failed', detail: String(e) }
+  const commissionResult: any = {
+    ok: true,
+    skipped: true,
+    reason: 'commission_moved_to_pedido_status_faturado',
   }
 
   const numero = nota.numero ?? ''

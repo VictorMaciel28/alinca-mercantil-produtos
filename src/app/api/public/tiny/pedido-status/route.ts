@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { tinyV3Fetch } from '@/lib/tinyOAuth'
+import { recomputeCommissionsForOrder } from '@/services/commission'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,24 @@ function mapTinyStatusToPlatform(codigoSituacao: string) {
     dados_incompletos: 'DADOS_INCOMPLETOS',
   }
   return map[code] ?? null
+}
+
+function normalizeCondicaoPagamento(value: unknown) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return null
+
+  // Tiny v3 often returns "21 28"; UI/options use "21/28D".
+  const onlyNumbersAndSpaces = raw.replace(/\s+/g, ' ').trim()
+  const parts = onlyNumbersAndSpaces
+    .split(' ')
+    .map((p) => p.trim())
+    .filter((p) => /^\d+$/.test(p))
+
+  if (parts.length > 0 && parts.join(' ') === onlyNumbersAndSpaces) {
+    return `${parts.join('/')}D`
+  }
+
+  return raw
 }
 
 async function handle(req: NextRequest) {
@@ -126,9 +145,7 @@ async function handle(req: NextRequest) {
         const formaRecebimento = tinyPedido?.pagamento?.formaRecebimento?.nome
           ? String(tinyPedido.pagamento.formaRecebimento.nome)
           : null
-        const condicaoPagamento = tinyPedido?.pagamento?.condicaoPagamento
-          ? String(tinyPedido.pagamento.condicaoPagamento)
-          : null
+        const condicaoPagamento = normalizeCondicaoPagamento(tinyPedido?.pagamento?.condicaoPagamento)
         const enderecoEntrega = tinyPedido?.enderecoEntrega
           ? {
               endereco: tinyPedido.enderecoEntrega?.endereco || '',
@@ -241,6 +258,15 @@ async function handle(req: NextRequest) {
     `
   }
 
+  let commission: any = null
+  if (mappedStatus === 'FATURADO') {
+    try {
+      commission = await recomputeCommissionsForOrder(row.numero)
+    } catch (e: any) {
+      commission = { ok: false, reason: 'commission_failed', detail: String(e?.message || e) }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     numero: row.numero,
@@ -248,6 +274,7 @@ async function handle(req: NextRequest) {
     status_received: payload?.dados?.codigoSituacao ?? null,
     status_saved: mappedStatus,
     id_nota_fiscal_saved: notaFiscalId,
+    commission,
   })
 }
 
