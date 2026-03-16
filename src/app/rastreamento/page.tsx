@@ -1,7 +1,8 @@
 "use client"
 
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
+import { useSearchParams } from 'next/navigation'
 import favIcon from '@/assets/images/favcon.ico'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 
@@ -45,12 +46,14 @@ const STEPS: Array<{ key: string; label: string; icon: string }> = [
 ]
 
 export default function RastreamentoPage() {
+  const searchParams = useSearchParams()
   const [numero, setNumero] = useState('')
   const [cnpj, setCnpj] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<TrackData | null>(null)
   const [downloading, setDownloading] = useState<'xml' | 'pdf' | null>(null)
+  const autoSearchDoneRef = useRef(false)
 
   const currentStepIndex = useMemo(() => {
     if (!result) return -1
@@ -83,6 +86,44 @@ export default function RastreamentoPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const numeroParam = (searchParams.get('numero') || '').trim()
+    const cnpjParam = (searchParams.get('cnpj') || '').trim()
+
+    if (numeroParam) setNumero(numeroParam)
+    if (cnpjParam) setCnpj(cnpjParam)
+
+    if (autoSearchDoneRef.current) return
+    if (!numeroParam || !cnpjParam) return
+
+    autoSearchDoneRef.current = true
+
+    ;(async () => {
+      setError('')
+      setResult(null)
+      setLoading(true)
+      try {
+        const res = await fetch('/api/public/rastreamento', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            numero: Number(numeroParam || 0),
+            cnpj: cnpjParam,
+          }),
+        })
+        const json = await res.json().catch(() => null)
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || 'Pedido não encontrado')
+        }
+        setResult(json.data as TrackData)
+      } catch (err: any) {
+        setError(err?.message || 'Erro ao consultar rastreamento')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [searchParams])
 
   const downloadNota = async (tipo: 'xml' | 'pdf') => {
     if (!result?.id_nota_fiscal) return
