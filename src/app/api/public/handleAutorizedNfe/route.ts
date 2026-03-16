@@ -249,7 +249,8 @@ export async function POST(req: NextRequest) {
     const smtpUser = process.env.SMTP_USER || 'sama@aliancamercantil.com'
     const smtpPass = process.env.SMTP_PASS || 'sama@aliancamercantil.com'
     const from = process.env.EMAIL_FROM || smtpUser
-    const toEmail = process.env.NOTIFY_EMAIL || 'danielffmeirelles@gmail.com'
+    const clientEmail = nota?.cliente?.email?.trim()
+    const toEmail = clientEmail || process.env.NOTIFY_EMAIL || 'danielffmeirelles@gmail.com'
 
     const transporter = nodemailer.createTransport({
       host: smtpHost,
