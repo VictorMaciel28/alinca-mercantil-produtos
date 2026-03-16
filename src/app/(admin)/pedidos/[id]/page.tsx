@@ -799,6 +799,8 @@ export default function PedidoFormPage() {
       const payloadToSend: any = {
         ...form,
         total: totalComDesconto,
+        forma_recebimento: formaRecebimento,
+        condicao_pagamento: condicaoPagamento,
         idContato,
         vendedor: {
           id: Number(meVendedor?.id_vendedor_externo || 0),
@@ -1517,14 +1519,16 @@ export default function PedidoFormPage() {
               </Row>
             </div>
 
-            <div className="d-flex gap-2 mt-4">
+            <div className="d-flex align-items-center justify-content-between gap-2 mt-4">
+              <Button variant="secondary" onClick={() => router.push(entityParam === 'proposta' ? '/propostas' : '/pedidos')}>
+                Cancelar
+              </Button>
               <Button
                 type="submit"
                 disabled={!!pagamentoParceladoErro || isSubmitting}
               >
                 {entityParam === 'proposta' ? 'Enviar Proposta' : 'Enviar Pedido'}
               </Button>
-              <Button variant="secondary" onClick={() => router.push(entityParam === 'proposta' ? '/propostas' : '/pedidos')}>Cancelar</Button>
             </div>
           </Form>
           </Card.Body>

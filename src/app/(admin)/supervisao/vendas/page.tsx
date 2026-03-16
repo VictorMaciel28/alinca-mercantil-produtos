@@ -93,38 +93,42 @@ export default function SupervisaoVendasPage() {
       {loading ? (
         <div>Carregando...</div>
       ) : (
-        <div className="table-responsive">
-          <table className="table table-sm table-striped table-hover">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Pedido</th>
-                <th>Cliente</th>
-                <th>Vendedor</th>
-                <th>Total</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((r) => (
-                <tr key={r.numero}>
-                  <td>{new Date(r.data).toLocaleDateString('pt-BR')}</td>
-                  <td>{r.numero}</td>
-                  <td>{r.cliente}</td>
-                  <td>{r.vendedor_nome || r.vendedor_externo || '-'}</td>
-                  <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                  <td>{r.status}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={4} className="text-end fw-semibold">Total</td>
-                <td className="fw-semibold">{totalSum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
+        <div className="card border-0 shadow-sm">
+          <div className="card-body">
+            <div className="table-responsive">
+              <table className="table table-sm table-striped table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Vendedor</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((r) => (
+                    <tr key={r.numero}>
+                      <td>{new Date(r.data).toLocaleDateString('pt-BR')}</td>
+                      <td>{r.numero}</td>
+                      <td>{r.cliente}</td>
+                      <td>{r.vendedor_nome || r.vendedor_externo || '-'}</td>
+                      <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      <td>{r.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={4} className="text-end fw-semibold">Total</td>
+                    <td className="fw-semibold">{totalSum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

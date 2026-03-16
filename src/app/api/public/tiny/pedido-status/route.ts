@@ -73,6 +73,36 @@ function normalizeCondicaoPagamento(value: unknown) {
   return raw
 }
 
+function buildEnderecoEntrega(tinyPedido: any) {
+  if (tinyPedido?.enderecoEntrega) {
+    return {
+      endereco: tinyPedido.enderecoEntrega?.endereco || '',
+      numero: tinyPedido.enderecoEntrega?.numero || '',
+      complemento: tinyPedido.enderecoEntrega?.complemento || '',
+      bairro: tinyPedido.enderecoEntrega?.bairro || '',
+      cep: tinyPedido.enderecoEntrega?.cep || '',
+      cidade: tinyPedido.enderecoEntrega?.municipio || '',
+      uf: tinyPedido.enderecoEntrega?.uf || '',
+      endereco_diferente: true,
+    }
+  }
+
+  if (tinyPedido?.cliente?.endereco) {
+    return {
+      endereco: tinyPedido.cliente.endereco?.endereco || '',
+      numero: tinyPedido.cliente.endereco?.numero || '',
+      complemento: tinyPedido.cliente.endereco?.complemento || '',
+      bairro: tinyPedido.cliente.endereco?.bairro || '',
+      cep: tinyPedido.cliente.endereco?.cep || '',
+      cidade: tinyPedido.cliente.endereco?.municipio || '',
+      uf: tinyPedido.cliente.endereco?.uf || '',
+      endereco_diferente: false,
+    }
+  }
+
+  return null
+}
+
 async function handle(req: NextRequest) {
   const raw = await req.text()
   try {
@@ -148,18 +178,7 @@ async function handle(req: NextRequest) {
           ? String(tinyPedido.pagamento.formaRecebimento.nome)
           : null
         const condicaoPagamento = normalizeCondicaoPagamento(tinyPedido?.pagamento?.condicaoPagamento)
-        const enderecoEntrega = tinyPedido?.enderecoEntrega
-          ? {
-              endereco: tinyPedido.enderecoEntrega?.endereco || '',
-              numero: tinyPedido.enderecoEntrega?.numero || '',
-              complemento: tinyPedido.enderecoEntrega?.complemento || '',
-              bairro: tinyPedido.enderecoEntrega?.bairro || '',
-              cep: tinyPedido.enderecoEntrega?.cep || '',
-              cidade: tinyPedido.enderecoEntrega?.municipio || '',
-              uf: tinyPedido.enderecoEntrega?.uf || '',
-              endereco_diferente: true,
-            }
-          : null
+        const enderecoEntrega = buildEnderecoEntrega(tinyPedido)
 
         const existingByTinyId = await prisma.platform_order.findFirst({
           where: { tiny_id: tinyOrderId },
@@ -245,18 +264,7 @@ async function handle(req: NextRequest) {
   }
 
   if (tinyPedidoFromV3) {
-    const enderecoEntrega = tinyPedidoFromV3?.enderecoEntrega
-      ? {
-          endereco: tinyPedidoFromV3.enderecoEntrega?.endereco || '',
-          numero: tinyPedidoFromV3.enderecoEntrega?.numero || '',
-          complemento: tinyPedidoFromV3.enderecoEntrega?.complemento || '',
-          bairro: tinyPedidoFromV3.enderecoEntrega?.bairro || '',
-          cep: tinyPedidoFromV3.enderecoEntrega?.cep || '',
-          cidade: tinyPedidoFromV3.enderecoEntrega?.municipio || '',
-          uf: tinyPedidoFromV3.enderecoEntrega?.uf || '',
-          endereco_diferente: true,
-        }
-      : null
+    const enderecoEntrega = buildEnderecoEntrega(tinyPedidoFromV3)
     if (enderecoEntrega) {
       await prisma.platform_order.update({
         where: { id: row.id },

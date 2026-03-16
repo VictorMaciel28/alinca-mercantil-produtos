@@ -24,6 +24,7 @@ type Linha = {
 export default function ComissoesPage() {
   const [rows, setRows] = useState<Linha[]>([])
   const [loading, setLoading] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [role, setRole] = useState<'VENDEDOR' | 'TELEVENDAS' | ''>('')
   const [vendorsAll, setVendorsAll] = useState<{ externo: string; nome: string; tipo?: 'VENDEDOR' | 'TELEVENDAS' | null }[]>([])
   const [vendorExterno, setVendorExterno] = useState<string>('')
@@ -60,6 +61,17 @@ export default function ComissoesPage() {
     const last = new Date(y, m + 1, 0).toISOString().slice(0, 10)
     setStart(first)
     setEnd(last)
+
+    // Resolve access level for UI controls
+    ;(async () => {
+      try {
+        const res = await fetch('/api/me/vendedor')
+        const json = await res.json()
+        setIsAdmin(Boolean(json?.ok && json?.data?.is_admin))
+      } catch {
+        setIsAdmin(false)
+      }
+    })()
 
     // Load vendors for filter
     ;(async () => {
@@ -144,36 +156,42 @@ export default function ComissoesPage() {
       <div className="card mb-3">
         <div className="card-body">
           <div className="row g-2">
-            <div className="col-md-2">
-              <label className="form-label">Tipo</label>
-              <select className="form-select" value={role} onChange={(e) => setRole(e.target.value as any)}>
-                <option value="">Todos</option>
-                <option value="VENDEDOR">Vendedor</option>
-                <option value="TELEVENDAS">Televendas</option>
-              </select>
-            </div>
-            <div className="col-md-3">
-              <label className="form-label">Vendedor</label>
-              <select className="form-select" value={vendorExterno} onChange={(e) => setVendorExterno(e.target.value)}>
-                <option value="">Todos</option>
-                {vendorOptions.map((v) => (
-                  <option key={v.externo} value={v.externo}>
-                    {v.nome} ({v.externo})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="col-md-3">
+            {isAdmin && (
+              <div className="col-md-2">
+                <label className="form-label">Tipo</label>
+                <select className="form-select" value={role} onChange={(e) => setRole(e.target.value as any)}>
+                  <option value="">Todos</option>
+                  <option value="VENDEDOR">Vendedor</option>
+                  <option value="TELEVENDAS">Televendas</option>
+                </select>
+              </div>
+            )}
+            {isAdmin && (
+              <div className="col-md-3">
+                <label className="form-label">Vendedor</label>
+                <select className="form-select" value={vendorExterno} onChange={(e) => setVendorExterno(e.target.value)}>
+                  <option value="">Todos</option>
+                  {vendorOptions.map((v) => (
+                    <option key={v.externo} value={v.externo}>
+                      {v.nome} ({v.externo})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className={isAdmin ? "col-md-3" : "col-md-4"}>
               <label className="form-label">Data inicial</label>
               <input type="date" className="form-control" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
-            <div className="col-md-4">
+            <div className={isAdmin ? "col-md-4" : "col-md-4"}>
               <label className="form-label">Data final</label>
               <div className="d-flex align-items-center">
                 <input type="date" className="form-control" value={end} onChange={(e) => setEnd(e.target.value)} />
-                <button className="btn btn-primary ms-2 text-nowrap" onClick={runReport} disabled={reportLoading}>
-                  {reportLoading ? 'Gerando...' : 'Relatório Geral'}
-                </button>
+                {isAdmin && (
+                  <button className="btn btn-primary ms-2 text-nowrap" onClick={runReport} disabled={reportLoading}>
+                    {reportLoading ? 'Gerando...' : 'Relatório Geral'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -266,41 +284,45 @@ export default function ComissoesPage() {
       {loading ? (
         <div>Carregando...</div>
       ) : (
-        <div className="table-responsive">
-          <table className="table table-sm table-striped table-hover">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Pedido</th>
-                <th>Cliente</th>
-                <th>Vendedor do Pedido</th>
-                <th>Vendedor Pertencente</th>
-                <th>Tipo</th>
-                <th>%</th>
-                <th>Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((r) => (
-                <tr key={r.id}>
-                  <td>{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td>{r.order?.numero ?? r.order_num}</td>
-                  <td>{r.order?.cliente ?? '-'}</td>
-                  <td>{r.order_vendor ? (r.order_vendor.nome || r.order_vendor.externo) : '-'}</td>
-                  <td>{r.client_vendor ? (r.client_vendor.nome || r.client_vendor.externo) : '-'}</td>
-                  <td>{r.role === 'TELEVENDAS' ? 'Televendas' : 'Vendedor'}</td>
-                  <td>{r.percent}%</td>
-                  <td>{r.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={7} className="text-end fw-semibold">Total</td>
-                <td className="fw-semibold">{totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-              </tr>
-            </tfoot>
-          </table>
+        <div className="card border-0 shadow-sm">
+          <div className="card-body">
+            <div className="table-responsive">
+              <table className="table table-sm table-striped table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Vendedor do Pedido</th>
+                    <th>Vendedor Pertencente</th>
+                    <th>Tipo</th>
+                    <th>%</th>
+                    <th>Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((r) => (
+                    <tr key={r.id}>
+                      <td>{new Date(r.created_at).toLocaleDateString('pt-BR')}</td>
+                      <td>{r.order?.numero ?? r.order_num}</td>
+                      <td>{r.order?.cliente ?? '-'}</td>
+                      <td>{r.order_vendor ? (r.order_vendor.nome || r.order_vendor.externo) : '-'}</td>
+                      <td>{r.client_vendor ? (r.client_vendor.nome || r.client_vendor.externo) : '-'}</td>
+                      <td>{r.role === 'TELEVENDAS' ? 'Televendas' : 'Vendedor'}</td>
+                      <td>{r.percent}%</td>
+                      <td>{r.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={7} className="text-end fw-semibold">Total</td>
+                    <td className="fw-semibold">{totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
         </div>
       )}
     </div>

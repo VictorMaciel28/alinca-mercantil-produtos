@@ -11,6 +11,7 @@ export async function GET(req: Request) {
     const offset = Math.max(0, Number(url.searchParams.get('offset') || 0))
     const search = (url.searchParams.get('search') || '').trim()
     const statusText = (url.searchParams.get('status') || '').trim()
+    const vendedorFiltro = (url.searchParams.get('vendedor') || '').trim()
     const dataInicio = (url.searchParams.get('dataInicio') || '').trim()
     const dataFim = (url.searchParams.get('dataFim') || '').trim()
     const sortByRaw = (url.searchParams.get('sortBy') || 'id').trim()
@@ -24,6 +25,7 @@ export async function GET(req: Request) {
     // Resolve external vendor id for this session user.
     let id_vendedor_externo: string | null = null
     let isAdmin = false
+    let isSupervisor = false
     let vendRecord = null
     if (userEmail) {
       vendRecord = await prisma.vendedor.findFirst({ where: { email: userEmail } })
@@ -31,6 +33,7 @@ export async function GET(req: Request) {
       if (vendRecord?.id_vendedor_externo) {
         const nivel = await prisma.vendedor_nivel_acesso.findUnique({ where: { id_vendedor_externo: vendRecord.id_vendedor_externo } }).catch(() => null)
         if (nivel?.nivel === 'ADMINISTRADOR') isAdmin = true
+        if (nivel?.nivel === 'SUPERVISOR') isSupervisor = true
       }
     }
     const statusMapFromText: Record<string, any> = {
@@ -69,10 +72,52 @@ export async function GET(req: Request) {
     // If admin, return filtered/paged orders
     let rows: any[] = []
     let total = 0
+    let totalValor = 0
     if (isAdmin) {
+      if (vendedorFiltro) whereBase.id_vendedor_externo = vendedorFiltro
       total = await prisma.platform_order.count({ where: whereBase })
+      const agg = await prisma.platform_order.aggregate({
+        where: whereBase,
+        _sum: { total: true },
+      })
+      totalValor = Number(agg?._sum?.total || 0)
       rows = await prisma.platform_order.findMany({
         where: whereBase,
+        orderBy: { [orderByField]: sortDir } as any,
+        skip: offset,
+        take: limit,
+      })
+    } else if (isSupervisor) {
+      if (!id_vendedor_externo) return NextResponse.json({ ok: true, data: [], paginacao: { limit, offset, total: 0 } })
+      const sup = await prisma.supervisor.findUnique({
+        where: { id_vendedor_externo },
+        select: { id: true },
+      })
+      const links = sup
+        ? await prisma.supervisor_vendor_links.findMany({
+            where: { supervisor_id: sup.id },
+            select: { vendedor_externo: true },
+          })
+        : []
+      const allowed = Array.from(new Set([id_vendedor_externo, ...links.map((l) => l.vendedor_externo)]))
+
+      const where: any = {
+        ...whereBase,
+        id_vendedor_externo: {
+          in:
+            vendedorFiltro && allowed.includes(vendedorFiltro)
+              ? [vendedorFiltro]
+              : allowed,
+        },
+      }
+      total = await prisma.platform_order.count({ where })
+      const agg = await prisma.platform_order.aggregate({
+        where,
+        _sum: { total: true },
+      })
+      totalValor = Number(agg?._sum?.total || 0)
+      rows = await prisma.platform_order.findMany({
+        where,
         orderBy: { [orderByField]: sortDir } as any,
         skip: offset,
         take: limit,
@@ -86,6 +131,11 @@ export async function GET(req: Request) {
         id_vendedor_externo,
       }
       total = await prisma.platform_order.count({ where })
+      const agg = await prisma.platform_order.aggregate({
+        where,
+        _sum: { total: true },
+      })
+      totalValor = Number(agg?._sum?.total || 0)
       rows = await prisma.platform_order.findMany({
         where,
         orderBy: { [orderByField]: sortDir } as any,
@@ -122,7 +172,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       data,
-      paginacao: { limit, offset, total },
+      paginacao: { limit, offset, total, total_valor: totalValor },
     })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao listar pedidos' }, { status: 500 })

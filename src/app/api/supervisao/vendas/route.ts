@@ -19,7 +19,9 @@ export async function GET(req: Request) {
     })
     if (!sup) return NextResponse.json({ ok: true, data: [], vendors: [] })
 
-    const externos = sup.links.map((l) => l.vendedor_externo).filter(Boolean)
+    const externos = Array.from(
+      new Set([myExterno, ...sup.links.map((l) => l.vendedor_externo).filter(Boolean)])
+    )
     if (externos.length === 0) return NextResponse.json({ ok: true, data: [], vendors: [] })
 
     const { searchParams } = new URL(req.url)

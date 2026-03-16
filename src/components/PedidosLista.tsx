@@ -51,7 +51,13 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
   const [sortBy, setSortBy] = useState<'numero' | 'data' | 'cliente'>('numero')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [totalPedidos, setTotalPedidos] = useState(0)
+  const [totalValorFiltrado, setTotalValorFiltrado] = useState(0)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isSupervisor, setIsSupervisor] = useState(false)
+  const [meVendedorExterno, setMeVendedorExterno] = useState('')
+  const [meVendedorNome, setMeVendedorNome] = useState('')
+  const [vendedorFiltro, setVendedorFiltro] = useState('')
+  const [vendedoresOptions, setVendedoresOptions] = useState<Array<{ id_vendedor_externo: string; nome: string }>>([])
 
   useEffect(() => {
     const t = setTimeout(() => setTermoBuscaDebounced(termoBusca), 350)
@@ -65,12 +71,85 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
         const res = await fetch('/api/me/vendedor', { signal: controller.signal })
         const json = await res.json().catch(() => null)
         setIsAdmin(Boolean(json?.ok && json?.data?.is_admin))
+        setIsSupervisor(Boolean(json?.ok && json?.data?.is_supervisor))
+        setMeVendedorExterno(String(json?.data?.id_vendedor_externo || ''))
+        setMeVendedorNome(String(json?.data?.nome || ''))
       } catch {
         setIsAdmin(false)
+        setIsSupervisor(false)
+        setMeVendedorExterno('')
+        setMeVendedorNome('')
       }
     })()
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    const canUseVendorFilter = isAdmin || isSupervisor
+    if (!canUseVendorFilter || entity !== 'pedido') return
+    const controller = new AbortController()
+    ;(async () => {
+      try {
+        if (isSupervisor && meVendedorExterno) {
+          const [supRes, vendRes] = await Promise.all([
+            fetch('/api/supervisores', { signal: controller.signal }),
+            fetch('/api/vendedores', { signal: controller.signal }),
+          ])
+          const supJson = await supRes.json().catch(() => null)
+          const vendJson = await vendRes.json().catch(() => null)
+          if (!supRes.ok || !supJson?.ok || !vendRes.ok || !vendJson?.ok) return
+
+          const allVendedores = Array.isArray(vendJson?.data) ? vendJson.data : []
+          const vendByExt = new Map(
+            allVendedores
+              .filter((v: any) => v?.id_vendedor_externo)
+              .map((v: any) => [String(v.id_vendedor_externo), String(v.nome || v.id_vendedor_externo)])
+          )
+
+          const supRows = Array.isArray(supJson?.data) ? supJson.data : []
+          const currentSup = supRows.find((s: any) => String(s?.id_vendedor_externo || '') === meVendedorExterno)
+          const supervised = Array.isArray(currentSup?.supervised) ? currentSup.supervised : []
+          const mappedSupervised = supervised
+            .filter((v: any) => v?.vendedor_externo)
+            .map((v: any) => {
+              const ext = String(v.vendedor_externo)
+              return {
+                id_vendedor_externo: ext,
+                nome: String(v.nome || vendByExt.get(ext) || ext),
+              }
+            })
+          const mapped = [
+            {
+              id_vendedor_externo: meVendedorExterno,
+              nome: meVendedorNome || vendByExt.get(meVendedorExterno) || meVendedorExterno,
+            },
+            ...mappedSupervised,
+          ].filter((v) => v.id_vendedor_externo)
+
+          const dedup = Array.from(
+            new Map(mapped.map((v) => [v.id_vendedor_externo, v])).values()
+          )
+          setVendedoresOptions(dedup)
+          return
+        }
+
+        const res = await fetch('/api/vendedores', { signal: controller.signal })
+        const json = await res.json().catch(() => null)
+        if (!res.ok || !json?.ok) return
+        const arr = Array.isArray(json?.data) ? json.data : []
+        const mapped = arr
+          .filter((v: any) => v?.id_vendedor_externo)
+          .map((v: any) => ({
+            id_vendedor_externo: String(v.id_vendedor_externo),
+            nome: String(v.nome || v.id_vendedor_externo),
+          }))
+        setVendedoresOptions(mapped)
+      } catch {
+        setVendedoresOptions([])
+      }
+    })()
+    return () => controller.abort()
+  }, [entity, isAdmin, isSupervisor, meVendedorExterno, meVendedorNome])
  
    const dentroDoPeriodo = (dataISO: string) => {
      if (!dataInicio && !dataFim) return true;
@@ -115,7 +194,7 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
 
   useEffect(() => {
     setPaginaAtual(1)
-  }, [termoBuscaDebounced, statusFiltro, dataInicio, dataFim, itensPorPagina, sortBy, sortDir])
+  }, [termoBuscaDebounced, statusFiltro, vendedorFiltro, dataInicio, dataFim, itensPorPagina, sortBy, sortDir])
 
   useEffect(() => {
     if (paginaAtual > totalPaginas) setPaginaAtual(totalPaginas)
@@ -216,6 +295,7 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
         qs.set('offset', String((paginaSegura - 1) * itensPorPagina))
         if (termoBuscaDebounced.trim()) qs.set('search', termoBuscaDebounced.trim())
         if (statusFiltro) qs.set('status', statusFiltro)
+        if (vendedorFiltro) qs.set('vendedor', vendedorFiltro)
         if (dataInicio) qs.set('dataInicio', dataInicio)
         if (dataFim) qs.set('dataFim', dataFim)
         qs.set('sortBy', sortBy)
@@ -225,13 +305,14 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
         if (!res.ok || !json?.ok) throw new Error(json?.error || 'Falha ao listar pedidos')
         setItems(Array.isArray(json?.data) ? json.data : [])
         setTotalPedidos(Number(json?.paginacao?.total || 0))
+        setTotalValorFiltrado(Number(json?.paginacao?.total_valor || 0))
       } catch (e: any) {
         if (e?.name === 'AbortError') return
         console.error('Erro ao listar pedidos paginados', e)
       }
     })()
     return () => controller.abort()
-  }, [entity, paginaSegura, itensPorPagina, termoBuscaDebounced, statusFiltro, dataInicio, dataFim, sortBy, sortDir])
+  }, [entity, paginaSegura, itensPorPagina, termoBuscaDebounced, statusFiltro, vendedorFiltro, dataInicio, dataFim, sortBy, sortDir])
 
   const toggleSort = (field: 'numero' | 'data' | 'cliente') => {
     if (sortBy === field) {
@@ -256,16 +337,18 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
         actions={
           <div className="d-flex align-items-center gap-2">
             {entity === 'pedido' && (
-              <Button size="sm" variant="outline-primary" onClick={syncPedidos} disabled={isSyncingPedidos}>
-                {isSyncingPedidos ? (
-                  <>
-                    <Spinner animation="border" size="sm" className="me-2" />
-                    Sincronizando
-                  </>
-                ) : (
-                  'Sincronizar Pedidos'
-                )}
-              </Button>
+              <>
+                {/* <Button size="sm" variant="outline-primary" onClick={syncPedidos} disabled={isSyncingPedidos}>
+                  {isSyncingPedidos ? (
+                    <>
+                      <Spinner animation="border" size="sm" className="me-2" />
+                      Sincronizando
+                    </>
+                  ) : (
+                    'Sincronizar Pedidos'
+                  )}
+                </Button> */}
+              </>
             )}
             <Button size="sm" onClick={() => router.push(newPath)}>
               Novo {entity === 'proposta' ? 'Proposta' : 'Pedido'}
@@ -278,7 +361,7 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
          <Card className="border-0 shadow-sm">
            <Card.Body>
              <Row className="g-3 align-items-end">
-               <Col lg={4} md={6}>
+              <Col lg={3} md={6}>
                  <Form.Label>Filtrar pedidos</Form.Label>
                  <Form.Control
                    type="text"
@@ -287,15 +370,30 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                    onChange={(e) => setTermoBusca(e.target.value)}
                  />
                </Col>
-               <Col lg={3} md={6}>
+              {(isAdmin || isSupervisor) && (
+                <Col lg={3} md={6}>
+                  <Form.Label>Vendedor</Form.Label>
+                  <Form.Select value={vendedorFiltro} onChange={(e) => setVendedorFiltro(e.target.value)}>
+                    <option value="">
+                      {isSupervisor ? 'Todos vendedores supervisionados' : 'Todos'}
+                    </option>
+                    {vendedoresOptions.map((v) => (
+                      <option key={v.id_vendedor_externo} value={v.id_vendedor_externo}>
+                        {v.nome}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Col>
+              )}
+              <Col lg={2} md={6}>
                  <Form.Label>Data Início</Form.Label>
                  <Form.Control type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
                </Col>
-               <Col lg={3} md={6}>
+              <Col lg={2} md={6}>
                  <Form.Label>Data Fim</Form.Label>
                  <Form.Control type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
                </Col>
-               <Col lg={2} md={6}>
+              <Col lg={2} md={6}>
                  <Form.Label>Status</Form.Label>
                  <Form.Select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value)}>
                    <option value="">Todos</option>
@@ -309,7 +407,10 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                  </Form.Select>
                </Col>
              </Row>
-            <div className="d-flex justify-content-end mt-3">
+            <div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+              <div className="text-muted small">
+                Mostrando {itensPaginados.length} resultados de {totalBase}
+              </div>
               <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                 Por página:
                 <Form.Select
@@ -444,6 +545,17 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                      </tr>
                    )}
                  </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={4} className="text-end fw-semibold">
+                      Total dos pedidos filtrados
+                    </td>
+                    <td className="fw-semibold">
+                      {totalValorFiltrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
                </Table>
              </div>
            </Card.Body>

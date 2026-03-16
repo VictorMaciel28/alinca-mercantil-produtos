@@ -8,127 +8,147 @@ export async function GET(req: Request) {
     const session = await getServerSession(options as any)
     const userEmail = session?.user?.email || null
     let vendedorExterno: string | null = null
+    let isAdmin = false
     if (userEmail) {
       const vend = await prisma.vendedor.findFirst({ where: { email: userEmail } })
       vendedorExterno = vend?.id_vendedor_externo ?? null
+      if (vend?.id_vendedor_externo) {
+        const nivel = await prisma.vendedor_nivel_acesso
+          .findUnique({ where: { id_vendedor_externo: vend.id_vendedor_externo } })
+          .catch(() => null)
+        isAdmin = nivel?.nivel === 'ADMINISTRADOR'
+      }
+    }
+    if (!vendedorExterno) {
+      return NextResponse.json({ ok: true, data: [] })
     }
 
     const { searchParams } = new URL(req.url)
     const roleParam = (searchParams.get('role') || '').toString().trim().toUpperCase()
     const vendorExterno = (searchParams.get('vendor_externo') || '').toString().trim()
-    const vendorNome = (searchParams.get('vendor_nome') || '').toString().trim()
     const startStr = (searchParams.get('start') || '').toString().slice(0, 10)
     const endStr = (searchParams.get('end') || '').toString().slice(0, 10)
 
-    // Build where
-    const where: any = {}
-    if (roleParam === 'VENDEDOR' || roleParam === 'TELEVENDAS') {
-      where.role = roleParam
+    const where: any = {
+      status: {
+        in: ['FATURADO', 'ENVIADO', 'ENTREGUE'],
+      },
+      OR: [
+        { id_vendedor_externo: vendedorExterno },
+        { client_vendor_externo: vendedorExterno },
+        { cliente_rel: { is: { id_vendedor_externo: vendedorExterno } } },
+      ],
     }
-
-    // Filter by vendor beneficiary
-    if (vendorExterno) {
-      where.beneficiary_externo = vendorExterno
-    } else if (vendorNome) {
-      const vends = await prisma.vendedor.findMany({
-        where: { nome: { contains: vendorNome } },
-        select: { id_vendedor_externo: true },
-        take: 200,
-      })
-      const externos = vends.map((v) => v.id_vendedor_externo).filter((x): x is string => !!x)
-      if (externos.length > 0) {
-        where.beneficiary_externo = { in: externos }
-      } else {
-        where.beneficiary_externo = '__none__' // no results
-      }
-    }
-
-    // Date range
     if (startStr || endStr) {
-      where.created_at = {}
-      if (startStr) where.created_at.gte = new Date(startStr + 'T00:00:00.000Z')
-      if (endStr) where.created_at.lte = new Date(endStr + 'T23:59:59.999Z')
+      where.data = {}
+      if (startStr) where.data.gte = new Date(startStr + 'T00:00:00.000Z')
+      if (endStr) where.data.lte = new Date(endStr + 'T23:59:59.999Z')
     }
 
-    // If vendor filter not provided, but we have a logged vendor, restrict results to that vendor (either as beneficiary or as order owner)
-    if (!vendorExterno && vendedorExterno) {
-      // include commissions where beneficiary_externo is this vendor OR the related order.id_vendedor_externo equals this vendor
-      where.OR = where.OR || []
-      where.OR.push({ beneficiary_externo: vendedorExterno })
-      where.OR.push({ order: { id_vendedor_externo: vendedorExterno } })
-    }
-
-    const rows = await prisma.platform_commission.findMany({
+    const orders = await prisma.platform_order.findMany({
       where,
-      orderBy: { created_at: 'desc' },
-      include: { order: true },
-      take: 1000,
+      include: { cliente_rel: true },
+      orderBy: { data: 'desc' },
+      take: 5000,
     })
 
-    // Map vendedor do pedido (by order.id_vendedor_externo) to nome
-    const orderVendorExternals = Array.from(
-      new Set(
-        rows
-          .map((r) => r.order?.id_vendedor_externo)
-          .filter((x): x is string => !!x)
-      )
-    )
-    const orderVendors =
-      orderVendorExternals.length > 0
+    const externalsSet = new Set<string>()
+    for (const o of orders) {
+      if (o.id_vendedor_externo) externalsSet.add(o.id_vendedor_externo)
+      const clientVendor = o.cliente_rel?.id_vendedor_externo || o.client_vendor_externo || null
+      if (clientVendor) externalsSet.add(clientVendor)
+    }
+    const externos = Array.from(externalsSet)
+    const vendRows =
+      externos.length > 0
         ? await prisma.vendedor.findMany({
-            where: { id_vendedor_externo: { in: orderVendorExternals } },
+            where: { id_vendedor_externo: { in: externos } },
             select: { id_vendedor_externo: true, nome: true },
           })
         : []
-    const orderVendNameByExt = new Map(orderVendors.map((v) => [v.id_vendedor_externo!, v.nome]))
+    const nameByExt = new Map(vendRows.map((v) => [v.id_vendedor_externo || '', v.nome]))
 
-    // Map vendedor pertencente preferindo order.client_vendor_externo
-    const clientVendorExternals = Array.from(
-      new Set(
-        rows
-          .map((r) => r.order?.client_vendor_externo)
-          .filter((x): x is string => !!x)
-      )
-    )
-    const clientVendors =
-      clientVendorExternals.length > 0
-        ? await prisma.vendedor.findMany({
-            where: { id_vendedor_externo: { in: clientVendorExternals } },
-            select: { id_vendedor_externo: true, nome: true },
-          })
-        : []
-    const clientVendNameByExt = new Map(clientVendors.map((v) => [v.id_vendedor_externo!, v.nome]))
+    let seq = 1
+    const computed: any[] = []
+    for (const o of orders) {
+      const total = Number(o.total || 0)
+      if (!(total > 0)) continue
+      const orderVendor = (o.id_vendedor_externo || '').trim()
+      const clientVendor = (o.cliente_rel?.id_vendedor_externo || o.client_vendor_externo || '').trim()
+      if (!orderVendor && !clientVendor) continue
 
-    const data = rows.map((r) => {
-      const o = r.order
-      const orderVendorExterno = o?.id_vendedor_externo || null
-      const orderVendorNome = orderVendorExterno ? orderVendNameByExt.get(orderVendorExterno) || null : null
-      const clientExterno = o?.client_vendor_externo || null
-      const clientVend = clientExterno ? { externo: clientExterno, nome: clientVendNameByExt.get(clientExterno) || null } : null
-
-      return {
-        id: r.id,
-        role: r.role,
-        percent: Number(r.percent),
-        amount: Number(r.amount),
-        created_at: r.created_at.toISOString(),
-        order_num: r.order_num,
-        order: o
-          ? {
-              numero: o.numero,
-              data: o.data.toISOString().slice(0, 10),
-              cliente: o.cliente,
-              cnpj: o.cnpj,
-              total: Number(o.total),
-              status: o.status,
-            }
-          : null,
-        order_vendor: orderVendorExterno
-          ? { externo: orderVendorExterno, nome: orderVendorNome }
-          : null,
-        client_vendor: clientVend,
+      const orderView = {
+        numero: o.numero,
+        data: o.data.toISOString().slice(0, 10),
+        cliente: o.cliente,
+        cnpj: o.cnpj,
+        total,
+        status: o.status,
       }
-    })
+      const orderVendorView = orderVendor
+        ? { externo: orderVendor, nome: nameByExt.get(orderVendor) || null }
+        : null
+      const clientVendorView = clientVendor
+        ? { externo: clientVendor, nome: nameByExt.get(clientVendor) || null }
+        : null
+
+      // 5%: order vendor is me and client vendor is me
+      if (orderVendor === vendedorExterno && clientVendor === vendedorExterno) {
+        computed.push({
+          id: seq++,
+          role: 'VENDEDOR',
+          percent: 5,
+          amount: Number(((total * 5) / 100).toFixed(2)),
+          created_at: o.data.toISOString(),
+          order_num: o.numero,
+          order: orderView,
+          order_vendor: orderVendorView,
+          client_vendor: clientVendorView,
+          beneficiary_externo: vendedorExterno,
+        })
+      }
+
+      // 1%: order vendor is me and client vendor is not me
+      if (orderVendor === vendedorExterno && clientVendor && clientVendor !== vendedorExterno) {
+        computed.push({
+          id: seq++,
+          role: 'TELEVENDAS',
+          percent: 1,
+          amount: Number(((total * 1) / 100).toFixed(2)),
+          created_at: o.data.toISOString(),
+          order_num: o.numero,
+          order: orderView,
+          order_vendor: orderVendorView,
+          client_vendor: clientVendorView,
+          beneficiary_externo: vendedorExterno,
+        })
+      }
+
+      // 4%: client vendor is me and order vendor is different from me
+      if (clientVendor === vendedorExterno && orderVendor && orderVendor !== vendedorExterno) {
+        computed.push({
+          id: seq++,
+          role: 'VENDEDOR',
+          percent: 4,
+          amount: Number(((total * 4) / 100).toFixed(2)),
+          created_at: o.data.toISOString(),
+          order_num: o.numero,
+          order: orderView,
+          order_vendor: orderVendorView,
+          client_vendor: clientVendorView,
+          beneficiary_externo: vendedorExterno,
+        })
+      }
+    }
+
+    let data = computed
+    if (isAdmin && vendorExterno) {
+      data = data.filter((r) => String(r.beneficiary_externo || '') === vendorExterno)
+    }
+    if (isAdmin && (roleParam === 'VENDEDOR' || roleParam === 'TELEVENDAS')) {
+      data = data.filter((r) => r.role === roleParam)
+    }
+    data = data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
     return NextResponse.json({ ok: true, data })
   } catch (error: any) {

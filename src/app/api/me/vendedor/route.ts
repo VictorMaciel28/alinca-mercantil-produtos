@@ -21,6 +21,7 @@ export async function GET() {
       .findUnique({ where: { id_vendedor_externo: externo } })
       .catch(() => null)
     const isAdmin = nivelRow?.nivel === 'ADMINISTRADOR'
+    const isSupervisor = nivelRow?.nivel === 'SUPERVISOR'
 
     let cidades: string[] = []
     if (tipo === 'TELEVENDAS') {
@@ -39,6 +40,7 @@ export async function GET() {
         nome: vend.nome,
         tipo,
         is_admin: isAdmin,
+        is_supervisor: isSupervisor,
         cidades,
       },
     })

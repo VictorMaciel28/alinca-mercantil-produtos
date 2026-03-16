@@ -31,6 +31,7 @@
     "clsx": "^2.1.1",
     "dayjs": "^1.11.13",
     "emoji-mart": "^5.6.0",
+    "fast-xml-parser": "^5.5.5",
     "gridjs": "^6.2.0",
     "gridjs-react": "^6.1.1",
     "gumshoejs": "^5.1.2",
@@ -43,6 +44,7 @@
     "nextjs-toploader": "^1.6.12",
     "nodemailer": "^6.9.3",
     "nouislider-react": "^3.4.2",
+    "puppeteer": "^24.39.1",
     "qrcode": "^1.5.1",
     "react": "^18.3.1",
     "react-apexcharts": "^1.4.1",
@@ -65,6 +67,7 @@
     "whatsapp-web.js": "^1.19.3",
     "wordpress-hash-node": "^1.0.0",
     "ws": "8.19.0",
+    "xslt-processor": "^5.0.4",
     "yup": "^1.4.0"
   },
   "devDependencies": {
