@@ -235,7 +235,9 @@ export async function POST(req: Request) {
         // Upsert: if exists update, else create
         const existing = await prisma.platform_order.findUnique({ where: { numero: platformNumero } })
         let savedOrder
+        let previousStatus: any = null
         if (existing) {
+          previousStatus = existing.status
           const updateData: any = { ...baseOrderData }
           savedOrder = await prisma.platform_order.update({
             where: { numero: platformNumero },
@@ -244,6 +246,18 @@ export async function POST(req: Request) {
         } else {
           const createData: any = { ...baseOrderData }
           savedOrder = await prisma.platform_order.create({ data: createData })
+        }
+
+        // Persist status history whenever status changes (or when order is first created)
+        if (savedOrder?.tiny_id || tinyId) {
+          const tinyIdForHistory = Number(savedOrder?.tiny_id || tinyId || 0)
+          const statusChanged = !existing || previousStatus !== savedOrder.status
+          if (tinyIdForHistory > 0 && statusChanged) {
+            await prisma.$executeRaw`
+              INSERT INTO platform_order_status_history (tiny_id, status, changed_at)
+              VALUES (${tinyIdForHistory}, ${String(savedOrder.status)}, NOW())
+            `
+          }
         }
 
         // If Tiny provided an id, store it on platform_order.tiny_id

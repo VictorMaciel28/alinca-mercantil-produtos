@@ -96,6 +96,12 @@ async function handle(req: NextRequest) {
   }
 
   const updateData: any = {}
+  const current = await prisma.platform_order.findUnique({
+    where: { id: row.id },
+    select: { status: true, tiny_id: true },
+  })
+
+  const hasStatusChange = !!mappedStatus && current?.status !== mappedStatus
   if (mappedStatus) updateData.status = mappedStatus
   if (notaFiscalId) updateData.id_nota_fiscal = notaFiscalId
 
@@ -104,6 +110,13 @@ async function handle(req: NextRequest) {
       where: { id: row.id },
       data: updateData,
     })
+  }
+
+  if (hasStatusChange) {
+    await prisma.$executeRaw`
+      INSERT INTO platform_order_status_history (tiny_id, status, changed_at)
+      VALUES (${tinyOrderId}, ${String(mappedStatus)}, NOW())
+    `
   }
 
   return NextResponse.json({
