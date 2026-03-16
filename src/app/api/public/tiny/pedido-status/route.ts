@@ -88,6 +88,7 @@ async function handle(req: NextRequest) {
   })
 
   // If not found locally by tiny_id, fetch from Tiny v3 and persist.
+  let tinyFetchError: string | null = null
   if (!row) {
     try {
       const tinyRes = await tinyV3Fetch(`/pedidos/${tinyOrderId}`, { method: 'GET' })
@@ -168,14 +169,24 @@ async function handle(req: NextRequest) {
           where: { tiny_id: tinyOrderId },
           select: { id: true, numero: true },
         })
+      } else {
+        tinyFetchError = `tiny_v3_not_found_or_invalid: status=${tinyRes.status}`
       }
-    } catch {
-      // keep webhook resilient; row remains null
+    } catch (e: any) {
+      tinyFetchError = e?.message || 'tiny_v3_fetch_failed'
     }
   }
 
   if (!row) {
-    return NextResponse.json({ ok: false, error: 'pedido_not_found_by_tiny_id', tiny_id: tinyOrderId }, { status: 404 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'pedido_not_found_by_tiny_id',
+        tiny_id: tinyOrderId,
+        detail: tinyFetchError,
+      },
+      { status: 404 }
+    )
   }
 
   const updateData: any = {}
