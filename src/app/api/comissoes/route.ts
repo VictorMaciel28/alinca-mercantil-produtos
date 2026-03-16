@@ -33,11 +33,13 @@ export async function GET(req: Request) {
       status: {
         in: ['FATURADO', 'ENVIADO', 'ENTREGUE'],
       },
-      OR: [
+    }
+    if (!isAdmin) {
+      where.OR = [
         { id_vendedor_externo: vendedorExterno },
         { client_vendor_externo: vendedorExterno },
         { cliente_rel: { is: { id_vendedor_externo: vendedorExterno } } },
-      ],
+      ]
     }
     if (startStr || endStr) {
       where.data = {}
@@ -92,8 +94,8 @@ export async function GET(req: Request) {
         ? { externo: clientVendor, nome: nameByExt.get(clientVendor) || null }
         : null
 
-      // 5%: order vendor is me and client vendor is me
-      if (orderVendor === vendedorExterno && clientVendor === vendedorExterno) {
+      // 5%: same vendor on order and client wallet -> one single commission row
+      if (orderVendor && clientVendor && orderVendor === clientVendor) {
         computed.push({
           id: seq++,
           role: 'VENDEDOR',
@@ -104,12 +106,13 @@ export async function GET(req: Request) {
           order: orderView,
           order_vendor: orderVendorView,
           client_vendor: clientVendorView,
-          beneficiary_externo: vendedorExterno,
+          beneficiary_externo: orderVendor,
         })
+        continue
       }
 
-      // 1%: order vendor is me and client vendor is not me
-      if (orderVendor === vendedorExterno && clientVendor && clientVendor !== vendedorExterno) {
+      // 1%: vendor on order
+      if (orderVendor) {
         computed.push({
           id: seq++,
           role: 'TELEVENDAS',
@@ -120,12 +123,12 @@ export async function GET(req: Request) {
           order: orderView,
           order_vendor: orderVendorView,
           client_vendor: clientVendorView,
-          beneficiary_externo: vendedorExterno,
+          beneficiary_externo: orderVendor,
         })
       }
 
-      // 4%: client vendor is me and order vendor is different from me
-      if (clientVendor === vendedorExterno && orderVendor && orderVendor !== vendedorExterno) {
+      // 4%: vendor from client wallet
+      if (clientVendor) {
         computed.push({
           id: seq++,
           role: 'VENDEDOR',
@@ -136,12 +139,15 @@ export async function GET(req: Request) {
           order: orderView,
           order_vendor: orderVendorView,
           client_vendor: clientVendorView,
-          beneficiary_externo: vendedorExterno,
+          beneficiary_externo: clientVendor,
         })
       }
     }
 
     let data = computed
+    if (!isAdmin && vendorExterno) {
+      data = data.filter((r) => String(r.beneficiary_externo || '') === vendorExterno)
+    }
     if (isAdmin && vendorExterno) {
       data = data.filter((r) => String(r.beneficiary_externo || '') === vendorExterno)
     }
