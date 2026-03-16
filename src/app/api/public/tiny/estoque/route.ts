@@ -26,23 +26,18 @@ async function logWebhook(req: NextRequest) {
     req.headers.get('cf-connecting-ip') ??
     null
 
-  const endpoint = req.nextUrl.pathname
-  const queryParams = req.nextUrl.searchParams.toString() || null
   const method = req.method.toUpperCase()
-  const device = detectDevice(userAgent ?? '')
+  detectDevice(userAgent ?? '')
 
   await prisma.$executeRaw`
-    INSERT INTO webhook_log (
-      endpoint, method, headers, body, ip_address, user_agent, device, query_params, received_at
+    INSERT INTO tiny_raw_logs (
+      method, headers, body, ip_address, user_agent, received_at
     ) VALUES (
-      ${endpoint},
       ${method},
       ${JSON.stringify(headers)},
       ${body || null},
       ${ipAddress},
       ${userAgent},
-      ${device},
-      ${queryParams},
       NOW()
     )
   `

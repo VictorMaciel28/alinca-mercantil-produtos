@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { tinyV3Fetch } from '@/lib/tinyOAuth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,23 +23,18 @@ async function logWebhook(req: NextRequest, rawBody: string) {
     req.headers.get('x-real-ip') ??
     req.headers.get('cf-connecting-ip') ??
     null
-  const endpoint = req.nextUrl.pathname
-  const queryParams = req.nextUrl.searchParams.toString() || null
   const method = req.method.toUpperCase()
-  const device = detectDevice(userAgent ?? '')
+  detectDevice(userAgent ?? '')
 
   await prisma.$executeRaw`
-    INSERT INTO webhook_log (
-      endpoint, method, headers, body, ip_address, user_agent, device, query_params, received_at
+    INSERT INTO tiny_raw_logs (
+      method, headers, body, ip_address, user_agent, received_at
     ) VALUES (
-      ${endpoint},
       ${method},
       ${JSON.stringify(headers)},
       ${rawBody || null},
       ${ipAddress},
       ${userAgent},
-      ${device},
-      ${queryParams},
       NOW()
     )
   `
@@ -86,10 +82,97 @@ async function handle(req: NextRequest) {
   const notaFiscalIdRaw = String(payload?.dados?.idNotaFiscal || '').trim()
   const notaFiscalId = notaFiscalIdRaw && notaFiscalIdRaw !== '0' ? notaFiscalIdRaw : null
 
-  const row = await prisma.platform_order.findFirst({
+  let row = await prisma.platform_order.findFirst({
     where: { tiny_id: tinyOrderId },
     select: { id: true, numero: true },
   })
+
+  // If not found locally by tiny_id, fetch from Tiny v3 and persist.
+  if (!row) {
+    try {
+      const tinyRes = await tinyV3Fetch(`/pedidos/${tinyOrderId}`, { method: 'GET' })
+      const tinyJson = await tinyRes.json().catch(() => null)
+      const tinyPedido = tinyJson?.item || tinyJson?.pedido || tinyJson?.data || tinyJson
+
+      const numero = Number(tinyPedido?.numeroPedido || tinyPedido?.numero || 0)
+      if (tinyRes.ok && numero > 0) {
+        const dataStr = String(tinyPedido?.data || '').slice(0, 10)
+        const clienteNome = String(tinyPedido?.cliente?.nome || '').trim()
+        const clienteCpfCnpj = String(tinyPedido?.cliente?.cpfCnpj || '').trim()
+        const vendedorExterno =
+          tinyPedido?.vendedor?.id != null ? String(tinyPedido.vendedor.id).trim() : null
+        const idClientExterno =
+          tinyPedido?.cliente?.id != null ? BigInt(String(tinyPedido.cliente.id)) : null
+        const formaRecebimento = tinyPedido?.pagamento?.formaRecebimento?.nome
+          ? String(tinyPedido.pagamento.formaRecebimento.nome)
+          : null
+        const condicaoPagamento = tinyPedido?.pagamento?.condicaoPagamento
+          ? String(tinyPedido.pagamento.condicaoPagamento)
+          : null
+        const enderecoEntrega = tinyPedido?.enderecoEntrega
+          ? {
+              endereco: tinyPedido.enderecoEntrega?.endereco || '',
+              numero: tinyPedido.enderecoEntrega?.numero || '',
+              complemento: tinyPedido.enderecoEntrega?.complemento || '',
+              bairro: tinyPedido.enderecoEntrega?.bairro || '',
+              cep: tinyPedido.enderecoEntrega?.cep || '',
+              cidade: tinyPedido.enderecoEntrega?.municipio || '',
+              uf: tinyPedido.enderecoEntrega?.uf || '',
+              endereco_diferente: true,
+            }
+          : null
+
+        const existingByNumero = await prisma.platform_order.findUnique({ where: { numero } })
+        const baseData: any = {
+          numero,
+          data: dataStr ? new Date(dataStr) : new Date(),
+          cliente: clienteNome || 'Cliente não informado',
+          cnpj: clienteCpfCnpj || '',
+          total: Number(tinyPedido?.valorTotalPedido || tinyPedido?.valorTotalProdutos || 0),
+          status: mappedStatus || 'PENDENTE',
+          forma_recebimento: formaRecebimento,
+          condicao_pagamento: condicaoPagamento,
+          endereco_entrega: enderecoEntrega,
+          id_vendedor_externo: vendedorExterno,
+          id_client_externo: idClientExterno,
+          tiny_id: tinyOrderId,
+          id_nota_fiscal: notaFiscalId || null,
+        }
+
+        if (existingByNumero) {
+          await prisma.platform_order.update({
+            where: { numero },
+            data: baseData,
+          })
+        } else {
+          await prisma.platform_order.create({ data: baseData })
+        }
+
+        const itens = Array.isArray(tinyPedido?.itens) ? tinyPedido.itens : []
+        await prisma.platform_order_product.deleteMany({ where: { order_num: numero } })
+        if (itens.length > 0) {
+          await prisma.platform_order_product.createMany({
+            data: itens.map((it: any) => ({
+              order_num: numero,
+              produto_id: it?.produto?.id != null ? Number(it.produto.id) : null,
+              codigo: it?.produto?.sku ? String(it.produto.sku) : null,
+              nome: String(it?.produto?.descricao || 'Produto'),
+              preco: Number(it?.valorUnitario || 0),
+              quantidade: Number(it?.quantidade || 0),
+              unidade: 'UN',
+            })),
+          })
+        }
+
+        row = await prisma.platform_order.findFirst({
+          where: { tiny_id: tinyOrderId },
+          select: { id: true, numero: true },
+        })
+      }
+    } catch {
+      // keep webhook resilient; row remains null
+    }
+  }
 
   if (!row) {
     return NextResponse.json({ ok: false, error: 'pedido_not_found_by_tiny_id', tiny_id: tinyOrderId }, { status: 404 })
