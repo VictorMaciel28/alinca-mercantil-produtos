@@ -96,6 +96,8 @@ export async function GET(_: Request, { params }: { params: { numero: string } }
       status:
       (row.status as any) === 'PROPOSTA'
         ? 'Proposta'
+        : row.status === 'APROVADO'
+        ? 'Aprovado'
         : row.status === 'PENDENTE'
         ? 'Pendente'
         : row.status === 'CANCELADO'

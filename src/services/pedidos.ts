@@ -1,5 +1,6 @@
 export type PedidoStatus =
   | 'Proposta'
+  | 'Aprovado'
   | 'Pendente'
   | 'Faturado'
   | 'Enviado'

@@ -37,7 +37,9 @@ export async function GET() {
     // Include products for each proposal (if any)
     const data = await Promise.all(
       rows.map(async (r) => {
-        const products = await prisma.platform_order_product.findMany({ where: { order_num: r.numero } })
+        const products = r.tiny_id
+          ? await prisma.platform_order_product.findMany({ where: { tiny_id: r.tiny_id } as any })
+          : []
         return {
           numero: r.numero,
           data: r.data.toISOString().slice(0, 10),
@@ -112,6 +114,7 @@ export async function POST(req: Request) {
     const created = await prisma.platform_order.create({
       data: {
         numero: nextNumero,
+        tiny_id: nextNumero,
         data: dataStr ? new Date(dataStr) : new Date(),
         cliente,
         cnpj,
@@ -128,7 +131,7 @@ export async function POST(req: Request) {
       const itens = Array.isArray(body?.itens) ? body.itens : []
       if (itens.length > 0) {
         const toCreate = itens.map((it: any) => ({
-          order_num: created.numero,
+          tiny_id: created.tiny_id ?? created.numero,
           produto_id: it.produtoId != null ? Number(it.produtoId) : null,
           codigo: it.codigo || (it.sku || null),
           nome: it.nome || it.descricao || '',
@@ -136,7 +139,7 @@ export async function POST(req: Request) {
           unidade: it.unidade || 'UN',
           preco: typeof it.preco === 'number' ? it.preco : Number(it.preco || 0),
         }))
-        await prisma.platform_order_product.createMany({ data: toCreate })
+        await prisma.platform_order_product.createMany({ data: toCreate as any })
       }
     } catch (e) {
       // ignore product persistence errors to avoid blocking proposal creation

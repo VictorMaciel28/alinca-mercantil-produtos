@@ -17,6 +17,10 @@ export async function GET() {
     const externo = vend.id_vendedor_externo
     const tipoRow = await prisma.vendedor_tipo_acesso.findUnique({ where: { id_vendedor_externo: externo } })
     const tipo = tipoRow?.tipo || 'VENDEDOR'
+    const nivelRow = await prisma.vendedor_nivel_acesso
+      .findUnique({ where: { id_vendedor_externo: externo } })
+      .catch(() => null)
+    const isAdmin = nivelRow?.nivel === 'ADMINISTRADOR'
 
     let cidades: string[] = []
     if (tipo === 'TELEVENDAS') {
@@ -34,6 +38,7 @@ export async function GET() {
         id_vendedor_externo: externo,
         nome: vend.nome,
         tipo,
+        is_admin: isAdmin,
         cidades,
       },
     })

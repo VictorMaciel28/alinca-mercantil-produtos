@@ -1,4 +1,4 @@
-export type PedidoStatus = 'Proposta' | 'Pendente' | 'Faturado' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Dados incompletos'
+export type PedidoStatus = 'Proposta' | 'Aprovado' | 'Pendente' | 'Faturado' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Dados incompletos'
 
 export interface Pedido {
   numero: number

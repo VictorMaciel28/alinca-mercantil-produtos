@@ -4,8 +4,19 @@ import { getServerSession } from 'next-auth'
 import { options } from '@/app/api/auth/[...nextauth]/options'
 import { tinyV3Fetch } from '@/lib/tinyOAuth'
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const url = new URL(req.url)
+    const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') || 20)))
+    const offset = Math.max(0, Number(url.searchParams.get('offset') || 0))
+    const search = (url.searchParams.get('search') || '').trim()
+    const statusText = (url.searchParams.get('status') || '').trim()
+    const dataInicio = (url.searchParams.get('dataInicio') || '').trim()
+    const dataFim = (url.searchParams.get('dataFim') || '').trim()
+    const sortByRaw = (url.searchParams.get('sortBy') || 'id').trim()
+    const sortDirRaw = (url.searchParams.get('sortDir') || 'desc').trim().toLowerCase()
+    const sortDir = sortDirRaw === 'asc' ? 'asc' : 'desc'
+
     const session = (await getServerSession(options as any)) as any
     if (!session?.user?.id) return NextResponse.json({ ok: true, data: [] })
 
@@ -22,20 +33,64 @@ export async function GET() {
         if (nivel?.nivel === 'ADMINISTRADOR') isAdmin = true
       }
     }
-    // If admin, return all orders
-    let rows
+    const statusMapFromText: Record<string, any> = {
+      Proposta: 'PROPOSTA',
+      Aprovado: 'APROVADO',
+      Pendente: 'PENDENTE',
+      Cancelado: 'CANCELADO',
+      Faturado: 'FATURADO',
+      Enviado: 'ENVIADO',
+      Entregue: 'ENTREGUE',
+      'Dados incompletos': 'DADOS_INCOMPLETOS',
+    }
+    const statusEnum = statusText ? statusMapFromText[statusText] || null : null
+    const orderByField =
+      sortByRaw === 'numero' || sortByRaw === 'data' || sortByRaw === 'cliente'
+        ? sortByRaw
+        : 'id'
+
+    const whereBase: any = {
+      NOT: { status: 'PROPOSTA' as any },
+    }
+    if (statusEnum) whereBase.status = statusEnum
+    if (search) {
+      whereBase.OR = [
+        { cliente: { contains: search } },
+        { cnpj: { contains: search } },
+        ...( /^\d+$/.test(search) ? [{ numero: Number(search) }] : []),
+      ]
+    }
+    if (dataInicio || dataFim) {
+      whereBase.data = {}
+      if (dataInicio) whereBase.data.gte = new Date(dataInicio)
+      if (dataFim) whereBase.data.lte = new Date(dataFim)
+    }
+
+    // If admin, return filtered/paged orders
+    let rows: any[] = []
+    let total = 0
     if (isAdmin) {
-      rows = await prisma.platform_order.findMany({ where: { NOT: { status: 'PROPOSTA' as any } }, orderBy: { created_at: 'desc' } })
+      total = await prisma.platform_order.count({ where: whereBase })
+      rows = await prisma.platform_order.findMany({
+        where: whereBase,
+        orderBy: { [orderByField]: sortDir } as any,
+        skip: offset,
+        take: limit,
+      })
     } else {
       // If we couldn't resolve an external vendor id, return empty result (no access)
       if (!id_vendedor_externo) return NextResponse.json({ ok: true, data: [] })
 
+      const where = {
+        ...whereBase,
+        id_vendedor_externo,
+      }
+      total = await prisma.platform_order.count({ where })
       rows = await prisma.platform_order.findMany({
-        where: {
-          NOT: { status: 'PROPOSTA' as any },
-          id_vendedor_externo,
-        },
-        orderBy: { created_at: 'desc' },
+        where,
+        orderBy: { [orderByField]: sortDir } as any,
+        skip: offset,
+        take: limit,
       })
     }
 
@@ -48,6 +103,8 @@ export async function GET() {
       status:
       r.status === 'PROPOSTA'
         ? 'Proposta'
+        : r.status === 'APROVADO'
+        ? 'Aprovado'
         : r.status === 'PENDENTE'
         ? 'Pendente'
         : r.status === 'CANCELADO'
@@ -62,7 +119,11 @@ export async function GET() {
       id_vendedor_externo: r.id_vendedor_externo,
     }))
 
-    return NextResponse.json({ ok: true, data })
+    return NextResponse.json({
+      ok: true,
+      data,
+      paginacao: { limit, offset, total },
+    })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao listar pedidos' }, { status: 500 })
   }
@@ -94,6 +155,7 @@ export async function POST(req: Request) {
 
     const statusMap: Record<string, any> = {
       Proposta: 'PROPOSTA',
+      Aprovado: 'APROVADO',
       Pendente: 'PENDENTE',
       Cancelado: 'CANCELADO',
       Faturado: 'FATURADO',
@@ -205,6 +267,7 @@ export async function POST(req: Request) {
         // Map status string to platform enum
         const statusMap: Record<string, any> = {
           Proposta: 'PROPOSTA',
+          Aprovado: 'APROVADO',
           Pendente: 'PENDENTE',
           Cancelado: 'CANCELADO',
           Faturado: 'FATURADO',
@@ -274,19 +337,29 @@ export async function POST(req: Request) {
 
         // Commission is now computed from fiscal-note webhook flow.
 
-        // Persist order items for edit/reload flow
-        await prisma.platform_order_product.deleteMany({ where: { order_num: platformNumero } })
+        const orderTinyIdForItems = Number(
+          savedOrder?.tiny_id || tinyId || platformNumero
+        )
+        if (orderTinyIdForItems > 0 && (!savedOrder?.tiny_id || Number(savedOrder.tiny_id) !== orderTinyIdForItems)) {
+          await prisma.platform_order.update({
+            where: { numero: platformNumero },
+            data: { tiny_id: orderTinyIdForItems },
+          })
+        }
+
+        // Persist order items for edit/reload flow linked by tiny_id
+        await prisma.platform_order_product.deleteMany({ where: { tiny_id: orderTinyIdForItems } as any })
         if (normalizedItems.length > 0) {
           await prisma.platform_order_product.createMany({
             data: normalizedItems.map((it: any) => ({
-              order_num: platformNumero,
+              tiny_id: orderTinyIdForItems,
               produto_id: it.produto_id,
               codigo: it.codigo,
               nome: it.nome,
               preco: Number(it.preco || 0),
               quantidade: Number(it.quantidade || 0),
               unidade: it.unidade || 'UN',
-            })),
+            })) as any,
           })
         }
 

@@ -43,8 +43,8 @@ async function logWebhook(req: NextRequest, rawBody: string) {
 
 function mapTinyStatusToPlatform(codigoSituacao: string) {
   const code = (codigoSituacao || '').toLowerCase().trim()
-  const map: Record<string, 'PENDENTE' | 'FATURADO' | 'ENVIADO' | 'ENTREGUE' | 'CANCELADO' | 'DADOS_INCOMPLETOS'> = {
-    aprovado: 'PENDENTE',
+  const map: Record<string, 'APROVADO' | 'PENDENTE' | 'FATURADO' | 'ENVIADO' | 'ENTREGUE' | 'CANCELADO' | 'DADOS_INCOMPLETOS'> = {
+    aprovado: 'APROVADO',
     preparando_envio: 'PENDENTE',
     faturado: 'FATURADO',
     enviado: 'ENVIADO',
@@ -105,6 +105,7 @@ async function handle(req: NextRequest) {
     where: { tiny_id: tinyOrderId },
     select: { id: true, numero: true },
   })
+  let tinyPedidoFromV3: any = null
 
   // If not found locally by tiny_id, fetch from Tiny v3 and persist.
   let tinyFetchError: string | null = null
@@ -122,6 +123,7 @@ async function handle(req: NextRequest) {
           tinyJson?.retorno?.pedido ||
           tinyJson?.retorno?.item ||
           tinyJson
+      tinyPedidoFromV3 = tinyPedido
 
       const numero = Number(tinyPedido?.numeroPedido || tinyPedido?.numero || payload?.dados?.numero || 0)
       const tinyPedidoId = Number(tinyPedido?.id || 0)
@@ -194,22 +196,6 @@ async function handle(req: NextRequest) {
           await prisma.platform_order.create({ data: baseData })
         }
 
-        const itens = Array.isArray(tinyPedido?.itens) ? tinyPedido.itens : []
-        await prisma.platform_order_product.deleteMany({ where: { order_num: numero } })
-        if (itens.length > 0) {
-          await prisma.platform_order_product.createMany({
-            data: itens.map((it: any) => ({
-              order_num: numero,
-              produto_id: it?.produto?.id != null ? Number(it.produto.id) : null,
-              codigo: it?.produto?.sku ? String(it.produto.sku) : null,
-              nome: String(it?.produto?.descricao || 'Produto'),
-              preco: Number(it?.valorUnitario || 0),
-              quantidade: Number(it?.quantidade || 0),
-              unidade: 'UN',
-            })),
-          })
-        }
-
         row = await prisma.platform_order.findFirst({
           where: { tiny_id: tinyOrderId },
           select: { id: true, numero: true },
@@ -232,6 +218,67 @@ async function handle(req: NextRequest) {
       },
       { status: 404 }
     )
+  }
+
+  // For existing orders, we still refresh full Tiny payload and items.
+  // This keeps platform_order_product in sync when webhook arrives after order already exists.
+  if (!tinyPedidoFromV3) {
+    try {
+      const tinyRes = await tinyV3Fetch(`/pedidos/${tinyOrderId}`, { method: 'GET' })
+      const tinyJson = await tinyRes.json().catch(() => null)
+      const tinyJsonIsObject = !!tinyJson && typeof tinyJson === 'object' && !Array.isArray(tinyJson)
+      const rootHasId = tinyJsonIsObject && Number((tinyJson as any)?.id || 0) > 0
+      const tinyPedido = rootHasId
+        ? tinyJson
+        : tinyJson?.item ||
+          tinyJson?.pedido ||
+          tinyJson?.data ||
+          tinyJson?.retorno?.pedido ||
+          tinyJson?.retorno?.item ||
+          tinyJson
+      if (tinyRes.ok && Number(tinyPedido?.id || 0) === tinyOrderId) {
+        tinyPedidoFromV3 = tinyPedido
+      }
+    } catch {
+      // Keep flow resilient; status update should not fail if Tiny detail fetch fails here.
+    }
+  }
+
+  if (tinyPedidoFromV3) {
+    const enderecoEntrega = tinyPedidoFromV3?.enderecoEntrega
+      ? {
+          endereco: tinyPedidoFromV3.enderecoEntrega?.endereco || '',
+          numero: tinyPedidoFromV3.enderecoEntrega?.numero || '',
+          complemento: tinyPedidoFromV3.enderecoEntrega?.complemento || '',
+          bairro: tinyPedidoFromV3.enderecoEntrega?.bairro || '',
+          cep: tinyPedidoFromV3.enderecoEntrega?.cep || '',
+          cidade: tinyPedidoFromV3.enderecoEntrega?.municipio || '',
+          uf: tinyPedidoFromV3.enderecoEntrega?.uf || '',
+          endereco_diferente: true,
+        }
+      : null
+    if (enderecoEntrega) {
+      await prisma.platform_order.update({
+        where: { id: row.id },
+        data: { endereco_entrega: enderecoEntrega },
+      })
+    }
+
+    const itens = Array.isArray(tinyPedidoFromV3?.itens) ? tinyPedidoFromV3.itens : []
+    await prisma.platform_order_product.deleteMany({ where: { tiny_id: tinyOrderId } as any })
+    if (itens.length > 0) {
+      await prisma.platform_order_product.createMany({
+        data: itens.map((it: any) => ({
+          tiny_id: tinyOrderId,
+          produto_id: it?.produto?.id != null ? Number(it.produto.id) : null,
+          codigo: it?.produto?.sku ? String(it.produto.sku) : null,
+          nome: String(it?.produto?.descricao || 'Produto'),
+          preco: Number(it?.valorUnitario || 0),
+          quantidade: Number(it?.quantidade || 0),
+          unidade: 'UN',
+        })) as any,
+      })
+    }
   }
 
   const updateData: any = {}

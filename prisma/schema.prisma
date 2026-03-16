@@ -145,6 +145,7 @@ model vendedor_nivel_acesso {
 
 enum PedidoStatus {
   PROPOSTA
+  APROVADO
   PENDENTE
   CANCELADO
   FATURADO
@@ -167,7 +168,7 @@ model platform_order {
   id_vendedor_externo  String?       @db.VarChar(100)
   id_client_externo    BigInt?       @db.UnsignedBigInt
   client_vendor_externo String?      @db.VarChar(100)
-  tiny_id              Int?
+  tiny_id              Int?          @unique
   id_nota_fiscal       String?       @db.VarChar(100)
   created_at           DateTime      @default(now()) @db.DateTime(0)
   updated_at           DateTime      @updatedAt @db.DateTime(0)
@@ -437,7 +438,7 @@ model tiny_order_products {
 
 model platform_order_product {
   id         Int      @id @default(autoincrement())
-  order_num  Int
+  tiny_id    Int
   produto_id Int?
   codigo     String?  @db.VarChar(100)
   nome       String   @db.VarChar(255)
@@ -446,10 +447,10 @@ model platform_order_product {
   unidade    String?  @db.VarChar(20)
   created_at DateTime @default(now()) @db.DateTime(0)
 
-  order      platform_order @relation(fields: [order_num], references: [numero], onDelete: Cascade)
+  order      platform_order @relation(fields: [tiny_id], references: [tiny_id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@unique([order_num, produto_id], map: "uk_platform_order_product_order_produto")
-  @@index([order_num], map: "idx_platform_order_product_order")
+  @@unique([tiny_id, produto_id], map: "uk_platform_order_product_order_produto")
+  @@index([tiny_id], map: "idx_platform_order_product_order")
 }
 
 model tiny_orders {
