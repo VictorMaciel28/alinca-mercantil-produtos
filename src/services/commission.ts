@@ -65,7 +65,7 @@ export async function recomputeCommissionsForOrder(orderNumero: number) {
     const carteiraVendorRole = await resolveRole(carteiraVendor)
     entries.push({
       beneficiary_externo: pedidoVendor,
-      role: pedidoVendorRole,
+      role: 'TELEVENDAS',
       percent: 1,
       amount: (total * 1) / 100,
     })
