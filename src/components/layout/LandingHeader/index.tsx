@@ -7,8 +7,9 @@ import logoDark from '@/assets/images/logo-dark.png'
 
 // Componente do cabeçalho da landing page
 function LandingHeader() {
-  // Estado para controlar a busca
+  // Estados locais
   const [searchQuery, setSearchQuery] = useState('')
+  const [menuExpanded, setMenuExpanded] = useState(false)
 
   // Função para lidar com a busca
   function handleSearch(e) {
@@ -60,7 +61,13 @@ function LandingHeader() {
       </Navbar>
 
       {/* Menu de navegação */}
-      <Navbar bg="light" expand="lg" className="landing-navigation">
+      <Navbar
+        bg="light"
+        expand="lg"
+        className="landing-navigation"
+        expanded={menuExpanded}
+        onToggle={(nextExpanded) => setMenuExpanded(nextExpanded)}
+      >
         <Container>
           {/* Botão para menu mobile */}
           <Navbar.Toggle aria-controls="navigation-nav" />
@@ -75,6 +82,16 @@ function LandingHeader() {
               <Nav.Link href="/autores" className="nav-link">Para Autores</Nav.Link>
               <Nav.Link href="/mais" className="nav-link">Mais</Nav.Link>
             </Nav>
+            <div className="close-menu-wrapper d-lg-none w-100 text-center mt-3">
+              <Button
+                variant="outline-light"
+                className="close-menu-btn w-100"
+                type="button"
+                onClick={() => setMenuExpanded(false)}
+              >
+                Fechar menu
+              </Button>
+            </div>
           </Navbar.Collapse>
         </Container>
       </Navbar>

@@ -21,6 +21,24 @@ type Linha = {
   client_vendor?: { externo: string; nome?: string | null } | null
 }
 
+type RelatorioPorCliente = {
+  cliente: string
+  cnpj: string
+  num_registros: number
+  total: number
+  order_total: number
+}
+
+type RelatorioVendedorRow = {
+  externo: string
+  nome: string | null
+  num_registros?: number
+  num_pedidos?: number
+  total: number
+  order_total: number
+  por_cliente?: RelatorioPorCliente[]
+}
+
 export default function ComissoesPage() {
   const [rows, setRows] = useState<Linha[]>([])
   const [loading, setLoading] = useState(false)
@@ -30,8 +48,8 @@ export default function ComissoesPage() {
   const [vendorExterno, setVendorExterno] = useState<string>('')
   const [start, setStart] = useState<string>('')
   const [end, setEnd] = useState<string>('')
-  const [reportVend, setReportVend] = useState<{ externo: string; nome: string | null; num_pedidos: number; total: number }[]>([])
-  const [reportTel, setReportTel] = useState<{ externo: string; nome: string | null; num_pedidos: number; total: number }[]>([])
+  const [reportVend, setReportVend] = useState<RelatorioVendedorRow[]>([])
+  const [reportTel, setReportTel] = useState<RelatorioVendedorRow[]>([])
   const [reportLoading, setReportLoading] = useState(false)
   const [showReport, setShowReport] = useState(false)
 
@@ -112,8 +130,11 @@ export default function ComissoesPage() {
 
   const data = useMemo(() => rows, [rows])
   const totalAmount = useMemo(() => data.reduce((acc, r) => acc + (r.amount || 0), 0), [data])
+  const totalOrderValue = useMemo(() => data.reduce((acc, r) => acc + (r.order?.total || 0), 0), [data])
   const totalReportVend = useMemo(() => reportVend.reduce((acc, r) => acc + (r.total || 0), 0), [reportVend])
   const totalReportTel = useMemo(() => reportTel.reduce((acc, r) => acc + (r.total || 0), 0), [reportTel])
+  const totalOrderReportVend = useMemo(() => reportVend.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportVend])
+  const totalOrderReportTel = useMemo(() => reportTel.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportTel])
 
   const runReport = async () => {
     setReportLoading(true)
@@ -213,30 +234,58 @@ export default function ComissoesPage() {
                   <div className="table-responsive mb-4">
           <h5 className="mb-2">Vendedores</h5>
                     <table className="table table-sm table-striped table-hover">
-                      <thead>
-                        <tr>
-                          <th>Vendedor</th>
-                          <th>ID Externo</th>
-                <th>Registros</th>
-                <th>Total Comissão</th>
+                    <thead>
+                      <tr>
+                        <th>Vendedor</th>
+                        <th>ID Externo</th>
+                        <th>Total do pedido</th>
+                        <th>Registros</th>
+                        <th>Total Comissão</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportVend.map((r) => (
+                        <tr key={r.externo}>
+                          <td className="align-top" style={{ minWidth: 220 }}>
+                            <div className="fw-bold">{r.nome || '-'}</div>
+                            {(r.por_cliente ?? []).map((c) => (
+                              <div
+                                key={`${c.cnpj}-${c.cliente}`}
+                                className="ps-3 ms-2 mt-2 small border-start border-secondary border-opacity-25"
+                              >
+                                <div>{c.cliente}</div>
+                                {c.cnpj ? <div className="text-muted">{c.cnpj}</div> : null}
+                                <div className="text-muted">
+                                  Comissão:{' '}
+                                  {c.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Pedido:{' '}
+                                  {c.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ·{' '}
+                                  {(c.num_registros ?? 0)} reg.
+                                </div>
+                              </div>
+                            ))}
+                          </td>
+                          <td className="align-top text-muted small">{r.externo}</td>
+                          <td>{r.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                          <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
+                          <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {reportVend.map((r) => (
-                          <tr key={r.externo}>
-                            <td>{r.nome || '-'}</td>
-                            <td>{r.externo}</td>
-                  <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
-                            <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <td colSpan={3} className="text-end fw-semibold">Total</td>
-                          <td className="fw-semibold">{totalReportVend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        </tr>
-                      </tfoot>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2} className="text-end fw-semibold">
+                          Total dos pedidos
+                        </td>
+                        <td className="fw-semibold">{totalOrderReportVend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                      <tr>
+                        <td colSpan={4} className="text-end fw-semibold">
+                          Total comissão
+                        </td>
+                        <td className="fw-semibold">{totalReportVend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      </tr>
+                    </tfoot>
                     </table>
                   </div>
                 )}
@@ -249,23 +298,51 @@ export default function ComissoesPage() {
                         <tr>
                           <th>Televendas</th>
                           <th>ID Externo</th>
-                <th>Registros</th>
-                <th>Total Comissão</th>
+                          <th>Total do pedido</th>
+                          <th>Registros</th>
+                          <th>Total Comissão</th>
                         </tr>
                       </thead>
                       <tbody>
                         {reportTel.map((r) => (
                           <tr key={r.externo}>
-                            <td>{r.nome || '-'}</td>
-                            <td>{r.externo}</td>
-                  <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
+                            <td className="align-top" style={{ minWidth: 220 }}>
+                              <div className="fw-bold">{r.nome || '-'}</div>
+                              {(r.por_cliente ?? []).map((c) => (
+                                <div
+                                  key={`${c.cnpj}-${c.cliente}`}
+                                  className="ps-3 ms-2 mt-2 small border-start border-secondary border-opacity-25"
+                                >
+                                  <div>{c.cliente}</div>
+                                  {c.cnpj ? <div className="text-muted">{c.cnpj}</div> : null}
+                                  <div className="text-muted">
+                                    Comissão:{' '}
+                                    {c.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Pedido:{' '}
+                                    {c.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ·{' '}
+                                    {(c.num_registros ?? 0)} reg.
+                                  </div>
+                                </div>
+                              ))}
+                            </td>
+                            <td className="align-top text-muted small">{r.externo}</td>
+                            <td>{r.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                            <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
                             <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot>
                         <tr>
-                          <td colSpan={3} className="text-end fw-semibold">Total</td>
+                          <td colSpan={2} className="text-end fw-semibold">
+                            Total dos pedidos
+                          </td>
+                          <td className="fw-semibold">{totalOrderReportTel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                          <td colSpan={2}></td>
+                        </tr>
+                        <tr>
+                          <td colSpan={4} className="text-end fw-semibold">
+                            Total comissão
+                          </td>
                           <td className="fw-semibold">{totalReportTel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                         </tr>
                       </tfoot>
@@ -295,6 +372,7 @@ export default function ComissoesPage() {
                     <th>Cliente</th>
                     <th>Vendedor do Pedido</th>
                     <th>Vendedor Pertencente</th>
+                    <th>Total do Pedido</th>
                     <th>Tipo</th>
                     <th>%</th>
                     <th>Valor</th>
@@ -308,6 +386,11 @@ export default function ComissoesPage() {
                       <td>{r.order?.cliente ?? '-'}</td>
                       <td>{r.order_vendor ? (r.order_vendor.nome || r.order_vendor.externo) : '-'}</td>
                       <td>{r.client_vendor ? (r.client_vendor.nome || r.client_vendor.externo) : '-'}</td>
+                      <td>
+                        {typeof r.order?.total === 'number'
+                          ? r.order.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                          : '-'}
+                      </td>
                       <td>{r.role === 'TELEVENDAS' ? 'Televendas' : 'Vendedor'}</td>
                       <td>{r.percent}%</td>
                       <td>{r.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
@@ -316,7 +399,12 @@ export default function ComissoesPage() {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={7} className="text-end fw-semibold">Total</td>
+                    <td colSpan={5} className="text-end fw-semibold">Total dos pedidos</td>
+                    <td className="fw-semibold">{totalOrderValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    <td colSpan={3}></td>
+                  </tr>
+                  <tr>
+                    <td colSpan={7} className="text-end fw-semibold">Total comissão</td>
                     <td className="fw-semibold">{totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                   </tr>
                 </tfoot>

@@ -633,3 +633,56 @@ html[data-menu-color="brand"] {
           }
      }
 }
+
+@include media-breakpoint-down(lg) {
+     .main-nav {
+          .close-menu-mobile {
+               padding: 0 1rem 1rem;
+
+               .close-menu-mobile-btn {
+                    border-radius: 8px;
+                    border-color: rgba(255, 255, 255, 0.8);
+                    color: rgba(255, 255, 255, 0.95);
+                    font-weight: 600;
+                    transition: background-color 0.2s ease, color 0.2s ease;
+
+                    &:hover,
+                    &:focus {
+                         background-color: rgba(255, 255, 255, 0.15);
+                         color: white;
+                    }
+               }
+          }
+
+          .close-menu-mobile-right {
+               position: relative;
+               width: 100%;
+               display: flex;
+               justify-content: flex-end;
+               padding: 0 1rem 1rem;
+               margin-top: 0.5rem;
+               z-index: 2;
+
+               .close-menu-mobile-btn {
+                    background: #4a3fd8;
+                    border: 0;
+                    color: white;
+                    font-weight: 600;
+                    padding: 0.45rem 1rem;
+                    border-radius: 999px;
+                    box-shadow: 0 10px 20px rgba(74, 63, 216, 0.35);
+                    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+                    svg {
+                         display: block;
+                    }
+
+                    &:hover,
+                    &:focus {
+                         transform: translateX(-2px);
+                         box-shadow: 0 12px 24px rgba(74, 63, 216, 0.45);
+                    }
+               }
+          }
+     }
+}

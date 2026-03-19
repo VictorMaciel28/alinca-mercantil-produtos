@@ -60,6 +60,7 @@ export default function VendedoresPage() {
   }
 
   const data = useMemo(() => rows, [rows])
+  const totalVendedores = rows.length
 
   const openEdit = (v: Vendedor) => {
     setEditing(v)
@@ -105,9 +106,12 @@ export default function VendedoresPage() {
         <div className="card-body">
           <div className="d-flex align-items-center justify-content-between mb-3">
             <h2 className="m-0">Vendedores</h2>
-            <button className="btn btn-primary" onClick={onSync} disabled={syncing}>
-              {syncing ? 'Atualizando...' : 'Atualizar Vendedores'}
-            </button>
+            <div className="d-flex align-items-center gap-3">
+              <button className="btn btn-primary" onClick={onSync} disabled={syncing}>
+                {syncing ? 'Atualizando...' : 'Atualizar Vendedores'}
+              </button>
+              <small className="text-muted mb-0">Total de vendedores: {totalVendedores}</small>
+            </div>
           </div>
 
           {loading ? (

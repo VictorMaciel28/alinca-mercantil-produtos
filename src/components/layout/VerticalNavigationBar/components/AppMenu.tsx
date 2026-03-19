@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Fragment, MouseEvent, useCallback, useEffect, useState } from 'react'
 import { Collapse } from 'react-bootstrap'
+import { useLayoutContext } from '@/context/useLayoutContext'
 
 const MenuItemWithChildren = ({ item, className, linkClassName, subMenuClassName, activeMenuItems, toggleMenu }: SubMenus) => {
   const [open, setOpen] = useState<boolean>(activeMenuItems!.includes(item.key))
@@ -102,6 +103,7 @@ type AppMenuProps = {
 
 const AppMenu = ({ menuItems }: AppMenuProps) => {
   const pathname = usePathname()
+  const { closeBackdrop } = useLayoutContext()
 
   const [activeMenuItems, setActiveMenuItems] = useState<Array<string>>([])
   const toggleMenu = (menuItem: MenuItemType, show: boolean) => {
@@ -167,8 +169,9 @@ const AppMenu = ({ menuItems }: AppMenuProps) => {
   }, [activeMenu, menuItems])
 
   return (
-    <ul className="navbar-nav">
-      {(menuItems || []).map((item, idx) => {
+    <>
+      <ul className="navbar-nav">
+        {(menuItems || []).map((item, idx) => {
         return (
           <Fragment key={item.key + idx}>
             {item.isTitle ? (
@@ -192,7 +195,20 @@ const AppMenu = ({ menuItems }: AppMenuProps) => {
           </Fragment>
         )
       })}
-    </ul>
+      </ul>
+      <div className="close-menu-mobile-right d-lg-none">
+        <button
+          type="button"
+          className="btn close-menu-mobile-btn d-flex align-items-center justify-content-center"
+          onClick={closeBackdrop}
+        >
+          <div className="me-1">
+            <IconifyIcon icon="material-symbols:chevron-left-rounded" width={20} height={20} />
+          </div>
+          <span>Esconder</span>
+        </button>
+      </div>
+    </>
   )
 }
 
