@@ -88,16 +88,15 @@ const LayoutProvider = ({ children }: ChildrenType) => {
     const htmlTag = document.getElementsByTagName('html')[0]
     if (offcanvasStates.showBackdrop) htmlTag.classList.remove('sidebar-enable')
     else htmlTag.classList.add('sidebar-enable')
-    setOffcanvasStates({ ...offcanvasStates, showBackdrop: !offcanvasStates.showBackdrop })
+    setOffcanvasStates((prev) => ({ ...prev, showBackdrop: !prev.showBackdrop }))
   }, [offcanvasStates.showBackdrop])
 
   // ensure backdrop is closed (no-op if already closed)
   const closeBackdrop = useCallback(() => {
-    if (!offcanvasStates.showBackdrop) return
     const htmlTag = document.getElementsByTagName('html')[0]
     htmlTag.classList.remove('sidebar-enable')
-    setOffcanvasStates({ ...offcanvasStates, showBackdrop: false })
-  }, [offcanvasStates.showBackdrop])
+    setOffcanvasStates((prev) => ({ ...prev, showBackdrop: false }))
+  }, [])
 
 
   useEffect(() => {

@@ -1,6 +1,6 @@
  "use client";
  
- import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, Form, Table, Badge, Row, Col, Button, Modal, Spinner } from "react-bootstrap";
  import PageTitle from '@/components/PageTitle'
 import { Pedido } from '@/services/pedidos2'
@@ -58,11 +58,63 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
   const [meVendedorNome, setMeVendedorNome] = useState('')
   const [vendedorFiltro, setVendedorFiltro] = useState('')
   const [vendedoresOptions, setVendedoresOptions] = useState<Array<{ id_vendedor_externo: string; nome: string }>>([])
+  const showOrderVendorColumn = entity === 'pedido' && !isAdmin
+  const extraColumnCount = showOrderVendorColumn ? 1 : 0
+  const cycleData = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('pt-BR', { month: 'long' })
+    const now = new Date()
+    const options: Array<{ id: string; label: string; start: string; end: string }> = []
+    let defaultId = ''
+    const currentDay = now.getDate()
+    for (let offset = 0; offset < 4; offset++) {
+      const cycleMonth = new Date(now.getFullYear(), now.getMonth() - offset, 1)
+      const year = cycleMonth.getFullYear()
+      const monthIndex = cycleMonth.getMonth()
+      const monthName = formatter
+        .format(cycleMonth)
+        .replace(/^\w/, (chr) => chr.toUpperCase())
+      const lastDay = new Date(year, monthIndex + 1, 0).getDate()
+      const firstHalfStart = new Date(year, monthIndex, 1).toISOString().slice(0, 10)
+      const firstHalfEnd = new Date(year, monthIndex, 15).toISOString().slice(0, 10)
+      const secondHalfStart = new Date(year, monthIndex, 16).toISOString().slice(0, 10)
+      const secondHalfEnd = new Date(year, monthIndex, lastDay).toISOString().slice(0, 10)
+
+      const firstId = `${year}-${monthIndex + 1}-first`
+      options.push({
+        id: firstId,
+        label: `1 a 15 de ${monthName} de ${year}`,
+        start: firstHalfStart,
+        end: firstHalfEnd,
+      })
+      if (offset === 0 && currentDay <= 15) defaultId = firstId
+
+      const secondId = `${year}-${monthIndex + 1}-second`
+      options.push({
+        id: secondId,
+        label: `16 a ${lastDay} de ${monthName} de ${year}`,
+        start: secondHalfStart,
+        end: secondHalfEnd,
+      })
+      if (offset === 0 && currentDay > 15) defaultId = secondId
+    }
+    return { options, defaultId }
+  }, [])
+  const cycleOptions = cycleData.options
+  const [selectedCycle, setSelectedCycle] = useState(() => cycleData.defaultId || '')
 
   useEffect(() => {
     const t = setTimeout(() => setTermoBuscaDebounced(termoBusca), 350)
     return () => clearTimeout(t)
   }, [termoBusca])
+
+  useEffect(() => {
+    if (!selectedCycle) return
+    const cycle = cycleOptions.find((option) => option.id === selectedCycle)
+    if (cycle) {
+      setDataInicio(cycle.start)
+      setDataFim(cycle.end)
+    }
+  }, [selectedCycle, cycleOptions])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -187,6 +239,13 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
 
   const totalBase = entity === 'pedido' ? totalPedidos : itensOrdenados.length
   const totalPaginas = Math.max(1, Math.ceil(totalBase / itensPorPagina))
+  const totalValorExibido = useMemo(
+    () =>
+      entity === 'pedido' && !isAdmin
+        ? itensOrdenados.reduce((acc, p) => acc + (p.total || 0), 0)
+        : totalValorFiltrado,
+    [entity, isAdmin, itensOrdenados, totalValorFiltrado],
+  )
   const paginaSegura = Math.min(paginaAtual, totalPaginas)
   const inicio = (paginaSegura - 1) * itensPorPagina
   const fim = inicio + itensPorPagina
@@ -328,7 +387,13 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
     return sortDir === 'asc' ? '↑' : '↓'
   }
  
-   return (
+  const formatBrDate = (iso: string) => {
+    if (!iso) return ''
+    const [year, month, day] = iso.split('-')
+    return `${day}/${month}/${year}`
+  }
+
+  return (
      <>
       <PageTitle
         title={title ?? (entity === 'proposta' ? 'Propostas Comerciais' : 'Pedidos')}
@@ -370,6 +435,17 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                    onChange={(e) => setTermoBusca(e.target.value)}
                  />
                </Col>
+              <Col lg={3} md={6}>
+                 <Form.Label>Ciclo</Form.Label>
+                 <Form.Select value={selectedCycle} onChange={(e) => setSelectedCycle(e.target.value)}>
+                   <option value="">Nenhum</option>
+                   {cycleOptions.map((cycle) => (
+                     <option key={cycle.id} value={cycle.id}>
+                       {cycle.label}
+                     </option>
+                   ))}
+                 </Form.Select>
+               </Col>
               {(isAdmin || isSupervisor) && (
                 <Col lg={3} md={6}>
                   <Form.Label>Vendedor</Form.Label>
@@ -387,11 +463,25 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
               )}
               <Col lg={2} md={6}>
                  <Form.Label>Data Início</Form.Label>
-                 <Form.Control type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+                 <Form.Control
+                   type="date"
+                   value={dataInicio}
+                   onChange={(e) => {
+                     setDataInicio(e.target.value)
+                     setSelectedCycle('')
+                   }}
+                 />
                </Col>
               <Col lg={2} md={6}>
                  <Form.Label>Data Fim</Form.Label>
-                 <Form.Control type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+                 <Form.Control
+                   type="date"
+                   value={dataFim}
+                   onChange={(e) => {
+                     setDataFim(e.target.value)
+                     setSelectedCycle('')
+                   }}
+                 />
                </Col>
               <Col lg={2} md={6}>
                  <Form.Label>Status</Form.Label>
@@ -475,6 +565,7 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                       Cliente {sortArrow('cliente')}
                     </th>
                      <th>CNPJ</th>
+                    {showOrderVendorColumn && <th>Vendedor no Pedido</th>}
                      <th>Total</th>
                      <th>Status</th>
                      <th style={{ width: 110 }}>Ações</th>
@@ -488,9 +579,14 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                       return (
                       <tr key={p.numero} style={{ cursor: 'pointer' }} onClick={() => router.push(computeItemUrl(p.numero))}>
                          <td>{p.numero}</td>
-                         <td>{new Date(p.data).toLocaleDateString('pt-BR')}</td>
+                         <td>{formatBrDate(p.data)}</td>
                          <td>{p.cliente}</td>
                          <td>{p.cnpj}</td>
+                         {showOrderVendorColumn && (
+                           <td>
+                             {p.order_vendor_nome || p.order_vendor_externo || '—'}
+                           </td>
+                         )}
                          <td>{p.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                          <td>
                           {p.status === 'Faturado' && (<Badge bg="success">{p.status}</Badge>)}
@@ -504,16 +600,26 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                          </td>
                          <td>
                            <div className="d-flex gap-2">
-                            {canEditPedido && (
-                              <Button
-                                variant="outline-secondary"
-                                size="sm"
-                                onClick={(e) => { e.stopPropagation(); router.push(computeItemUrl(p.numero)) }}
-                                title="Editar"
-                              >
-                                 <IconifyIcon icon="ri:edit-line" />
-                               </Button>
-                            )}
+                      {canEditPedido && (
+                        <Button
+                          variant="outline-secondary"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); router.push(computeItemUrl(p.numero)) }}
+                          title="Editar"
+                        >
+                           <IconifyIcon icon="ri:edit-line" />
+                         </Button>
+                      )}
+                      {!isAdmin && entity === 'pedido' && (
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); router.push(computeItemUrl(p.numero)) }}
+                          title="Ver"
+                        >
+                          <IconifyIcon icon="ri:eye-line" />
+                        </Button>
+                      )}
                            {entity === 'proposta' && (
                              <Button
                                variant="outline-success"
@@ -541,17 +647,17 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                     })
                    ) : (
                      <tr>
-                       <td colSpan={7} className="text-center text-muted py-4">Nenhum {entity === 'proposta' ? 'proposta' : 'pedido'} encontrado com os filtros atuais</td>
+                       <td colSpan={7 + extraColumnCount} className="text-center text-muted py-4">Nenhum {entity === 'proposta' ? 'proposta' : 'pedido'} encontrado com os filtros atuais</td>
                      </tr>
                    )}
                  </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={4} className="text-end fw-semibold">
+                    <td colSpan={4 + extraColumnCount} className="text-end fw-semibold">
                       Total dos pedidos filtrados
                     </td>
                     <td className="fw-semibold">
-                      {totalValorFiltrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      {totalValorExibido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>
                     <td colSpan={2}></td>
                   </tr>

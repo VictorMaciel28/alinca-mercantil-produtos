@@ -40,16 +40,59 @@ type RelatorioVendedorRow = {
 }
 
 export default function ComissoesPage() {
+  const cycleData = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('pt-BR', { month: 'long' })
+    const now = new Date()
+    const options: Array<{ id: string; label: string; start: string; end: string }> = []
+    let defaultId = ''
+    const currentDay = now.getDate()
+    for (let offset = 0; offset < 4; offset++) {
+      const cycleMonth = new Date(now.getFullYear(), now.getMonth() - offset, 1)
+      const year = cycleMonth.getFullYear()
+      const monthIndex = cycleMonth.getMonth()
+      const monthName = formatter
+        .format(cycleMonth)
+        .replace(/^\w/, (chr) => chr.toUpperCase())
+      const lastDay = new Date(year, monthIndex + 1, 0).getDate()
+      const firstHalfStart = new Date(year, monthIndex, 1).toISOString().slice(0, 10)
+      const firstHalfEnd = new Date(year, monthIndex, 15).toISOString().slice(0, 10)
+      const secondHalfStart = new Date(year, monthIndex, 16).toISOString().slice(0, 10)
+      const secondHalfEnd = new Date(year, monthIndex, lastDay).toISOString().slice(0, 10)
+
+      const firstId = `${year}-${monthIndex + 1}-first`
+      options.push({
+        id: firstId,
+        label: `1 a 15 de ${monthName} de ${year}`,
+        start: firstHalfStart,
+        end: firstHalfEnd,
+      })
+      if (offset === 0 && currentDay <= 15) defaultId = firstId
+
+      const secondId = `${year}-${monthIndex + 1}-second`
+      options.push({
+        id: secondId,
+        label: `16 a ${lastDay} de ${monthName} de ${year}`,
+        start: secondHalfStart,
+        end: secondHalfEnd,
+      })
+      if (offset === 0 && currentDay > 15) defaultId = secondId
+    }
+    return { options, defaultId }
+  }, [])
+
   const [rows, setRows] = useState<Linha[]>([])
   const [loading, setLoading] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [role, setRole] = useState<'VENDEDOR' | 'TELEVENDAS' | ''>('')
   const [vendorsAll, setVendorsAll] = useState<{ externo: string; nome: string; tipo?: 'VENDEDOR' | 'TELEVENDAS' | null }[]>([])
   const [vendorExterno, setVendorExterno] = useState<string>('')
+  const [meVendorId, setMeVendorId] = useState<string>('')
+  const [selectedCycle, setSelectedCycle] = useState(cycleData.defaultId)
   const [start, setStart] = useState<string>('')
   const [end, setEnd] = useState<string>('')
-  const [reportVend, setReportVend] = useState<RelatorioVendedorRow[]>([])
-  const [reportTel, setReportTel] = useState<RelatorioVendedorRow[]>([])
+  const [reportCaseA, setReportCaseA] = useState<RelatorioVendedorRow[]>([])
+  const [reportCaseB, setReportCaseB] = useState<RelatorioVendedorRow[]>([])
+  const [reportCaseC, setReportCaseC] = useState<RelatorioVendedorRow[]>([])
   const [reportLoading, setReportLoading] = useState(false)
   const [showReport, setShowReport] = useState(false)
 
@@ -85,7 +128,12 @@ export default function ComissoesPage() {
       try {
         const res = await fetch('/api/me/vendedor')
         const json = await res.json()
+        const idExterno = String(json?.data?.id_vendedor_externo || '')
         setIsAdmin(Boolean(json?.ok && json?.data?.is_admin))
+        setMeVendorId(idExterno)
+        if (!json?.data?.is_admin && idExterno) {
+          setVendorExterno(idExterno)
+        }
       } catch {
         setIsAdmin(false)
       }
@@ -110,6 +158,15 @@ export default function ComissoesPage() {
     })()
   }, [])
 
+  useEffect(() => {
+    if (!selectedCycle) return
+    const cycle = cycleData.options.find((option) => option.id === selectedCycle)
+    if (cycle) {
+      setStart(cycle.start)
+      setEnd(cycle.end)
+    }
+  }, [selectedCycle, cycleData.options])
+
   // When role changes, clear vendor if it doesn't match the filtered options
   const vendorOptions = useMemo(() => {
     if (!role) return vendorsAll
@@ -117,12 +174,15 @@ export default function ComissoesPage() {
   }, [vendorsAll, role])
 
   useEffect(() => {
+    if (!isAdmin) return
     if (vendorExterno && !vendorOptions.some((v) => v.externo === vendorExterno)) {
       setVendorExterno('')
     }
-  }, [role, vendorOptions, vendorExterno])
+  }, [role, vendorOptions, vendorExterno, isAdmin])
 
   // Auto reload on filter change (after dates are initialized)
+  const cycleOptions = cycleData.options
+
   useEffect(() => {
     if (start && end) load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,10 +191,32 @@ export default function ComissoesPage() {
   const data = useMemo(() => rows, [rows])
   const totalAmount = useMemo(() => data.reduce((acc, r) => acc + (r.amount || 0), 0), [data])
   const totalOrderValue = useMemo(() => data.reduce((acc, r) => acc + (r.order?.total || 0), 0), [data])
-  const totalReportVend = useMemo(() => reportVend.reduce((acc, r) => acc + (r.total || 0), 0), [reportVend])
-  const totalReportTel = useMemo(() => reportTel.reduce((acc, r) => acc + (r.total || 0), 0), [reportTel])
-  const totalOrderReportVend = useMemo(() => reportVend.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportVend])
-  const totalOrderReportTel = useMemo(() => reportTel.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportTel])
+  const totalCaseA = useMemo(() => reportCaseA.reduce((acc, r) => acc + (r.total || 0), 0), [reportCaseA])
+  const totalCaseB = useMemo(() => reportCaseB.reduce((acc, r) => acc + (r.total || 0), 0), [reportCaseB])
+  const totalCaseC = useMemo(() => reportCaseC.reduce((acc, r) => acc + (r.total || 0), 0), [reportCaseC])
+  const totalOrderCaseA = useMemo(() => reportCaseA.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportCaseA])
+  const totalOrderCaseB = useMemo(() => reportCaseB.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportCaseB])
+  const totalOrderCaseC = useMemo(() => reportCaseC.reduce((acc, r) => acc + (r.order_total || 0), 0), [reportCaseC])
+  const summaryRows = useMemo(() => {
+    const map = new Map<string, RelatorioVendedorRow>()
+    const addRow = (row: RelatorioVendedorRow) => {
+      if (!row.externo) return
+      const current = map.get(row.externo) || {
+        ...row,
+        total: 0,
+        order_total: 0,
+        por_cliente: [],
+      }
+      current.total += row.total
+      current.order_total += row.order_total
+      current.por_cliente = [...(current.por_cliente || []), ...(row.por_cliente ?? [])]
+      map.set(row.externo, current)
+    }
+    ;[reportCaseA, reportCaseB, reportCaseC].forEach((list) => list.forEach(addRow))
+    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+  }, [reportCaseA, reportCaseB, reportCaseC])
+  const totalCaseSummary = useMemo(() => summaryRows.reduce((acc, r) => acc + (r.total || 0), 0), [summaryRows])
+  const totalOrderCaseSummary = useMemo(() => summaryRows.reduce((acc, r) => acc + (r.order_total || 0), 0), [summaryRows])
 
   const runReport = async () => {
     setReportLoading(true)
@@ -143,29 +225,132 @@ export default function ComissoesPage() {
       if (vendorExterno) params.set('vendor_externo', vendorExterno)
       if (start) params.set('start', start)
       if (end) params.set('end', end)
+      if (role) params.set('role', role)
       const res = await fetch(`/api/relatorios/vendas-por-vendedor?${params.toString()}`)
       const json = await res.json()
       if (json?.ok) {
-        if (json?.vendedores && json?.televendas) {
-          setReportVend(json.vendedores)
-          setReportTel(json.televendas)
-        } else {
-          // backward compat if role provided (not required anymore)
-          const arr = json.data || []
-          // heuristic: if role selected, decide bucket; else put into vendedores
-          if (role === 'TELEVENDAS') {
-            setReportVend([])
-            setReportTel(arr)
-          } else {
-            setReportVend(arr)
-            setReportTel([])
-          }
-        }
+        setReportCaseA(json.caseA || [])
+        setReportCaseB(json.caseB || [])
+        setReportCaseC(json.caseC || [])
         setShowReport(true)
       }
     } finally {
       setReportLoading(false)
     }
+  }
+
+  const renderCommissionSection = (
+    title: string,
+    rows: RelatorioVendedorRow[],
+    totalOrder: number,
+    totalCommission: number,
+  ) => {
+    if (!rows.length) return null
+    return (
+      <div className="table-responsive mb-4">
+        <h5 className="mb-2">{title}</h5>
+        <table className="table table-sm table-striped table-hover">
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th>ID Externo</th>
+              <th>Total dos pedidos</th>
+              <th>Registros</th>
+              <th>Total Comissão</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.externo}-${r.total}-${r.order_total}`}>
+                <td className="align-top" style={{ minWidth: 220 }}>
+                  <div className="fw-bold">{r.nome || '-'}</div>
+                  <div className="small text-muted mb-1">{r.externo}</div>
+                  {(r.por_cliente ?? []).map((c) => (
+                    <div
+                      key={`${c.cnpj}-${c.cliente}`}
+                      className="ps-3 ms-2 mt-2 small border-start border-secondary border-opacity-25"
+                    >
+                      <div>{c.cliente}</div>
+                      {c.cnpj ? <div className="text-muted">{c.cnpj}</div> : null}
+                      <div className="text-muted">
+                        Comissão:{' '}
+                        {c.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Pedido:{' '}
+                        {c.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ·{' '}
+                        {(c.num_registros ?? 0)} reg.
+                      </div>
+                    </div>
+                  ))}
+                </td>
+                <td className="align-top text-muted small">{r.externo}</td>
+                <td>{r.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
+                <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2} className="text-end fw-semibold">
+                Total dos pedidos
+              </td>
+              <td className="fw-semibold">{totalOrder.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+              <td colSpan={2}></td>
+            </tr>
+            <tr>
+              <td colSpan={4} className="text-end fw-semibold">
+                Total comissão
+              </td>
+              <td className="fw-semibold">{totalCommission.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    )
+  }
+
+  const renderSummarySection = (
+    title: string,
+    rows: RelatorioVendedorRow[],
+    totalOrder: number,
+    totalCommission: number,
+  ) => {
+    if (!rows.length) return null
+    return (
+      <div className="table-responsive mb-4">
+        <h5 className="mb-2">{title}</h5>
+        <table className="table table-sm table-striped table-hover">
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th>Comissões somadas:</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`summary-${r.externo}`}>
+                <td className="fw-bold">{r.nome || '-'}</td>
+                <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={2} className="text-end fw-semibold">
+                Total dos pedidos
+              </td>
+              <td className="fw-semibold">{totalOrder.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td colSpan={3} className="text-end fw-semibold">
+                Total comissão
+              </td>
+              <td className="fw-semibold">{totalCommission.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    )
   }
 
   return (
@@ -200,14 +385,45 @@ export default function ComissoesPage() {
                 </select>
               </div>
             )}
+            <div className="col-md-3">
+              <label className="form-label">Ciclo</label>
+              <select
+                className="form-select"
+                value={selectedCycle}
+                onChange={(e) => setSelectedCycle(e.target.value)}
+              >
+                <option value="">Nenhum</option>
+                {cycleOptions.map((cycle) => (
+                  <option key={cycle.id} value={cycle.id}>
+                    {cycle.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className={isAdmin ? "col-md-3" : "col-md-4"}>
               <label className="form-label">Data inicial</label>
-              <input type="date" className="form-control" value={start} onChange={(e) => setStart(e.target.value)} />
+              <input
+                type="date"
+                className="form-control"
+                value={start}
+                onChange={(e) => {
+                  setStart(e.target.value)
+                  setSelectedCycle('')
+                }}
+              />
             </div>
             <div className={isAdmin ? "col-md-4" : "col-md-4"}>
               <label className="form-label">Data final</label>
               <div className="d-flex align-items-center">
-                <input type="date" className="form-control" value={end} onChange={(e) => setEnd(e.target.value)} />
+                <input
+                  type="date"
+                  className="form-control"
+                  value={end}
+                  onChange={(e) => {
+                    setEnd(e.target.value)
+                    setSelectedCycle('')
+                  }}
+                />
                 {isAdmin && (
                   <button className="btn btn-primary ms-2 text-nowrap" onClick={runReport} disabled={reportLoading}>
                     {reportLoading ? 'Gerando...' : 'Relatório Geral'}
@@ -230,124 +446,12 @@ export default function ComissoesPage() {
                 <button type="button" className="btn-close" onClick={() => setShowReport(false)} aria-label="Close"></button>
               </div>
               <div className="modal-body">
-                {reportVend.length > 0 && (
-                  <div className="table-responsive mb-4">
-          <h5 className="mb-2">Vendedores</h5>
-                    <table className="table table-sm table-striped table-hover">
-                    <thead>
-                      <tr>
-                        <th>Vendedor</th>
-                        <th>ID Externo</th>
-                        <th>Total do pedido</th>
-                        <th>Registros</th>
-                        <th>Total Comissão</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportVend.map((r) => (
-                        <tr key={r.externo}>
-                          <td className="align-top" style={{ minWidth: 220 }}>
-                            <div className="fw-bold">{r.nome || '-'}</div>
-                            {(r.por_cliente ?? []).map((c) => (
-                              <div
-                                key={`${c.cnpj}-${c.cliente}`}
-                                className="ps-3 ms-2 mt-2 small border-start border-secondary border-opacity-25"
-                              >
-                                <div>{c.cliente}</div>
-                                {c.cnpj ? <div className="text-muted">{c.cnpj}</div> : null}
-                                <div className="text-muted">
-                                  Comissão:{' '}
-                                  {c.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Pedido:{' '}
-                                  {c.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ·{' '}
-                                  {(c.num_registros ?? 0)} reg.
-                                </div>
-                              </div>
-                            ))}
-                          </td>
-                          <td className="align-top text-muted small">{r.externo}</td>
-                          <td>{r.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                          <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
-                          <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={2} className="text-end fw-semibold">
-                          Total dos pedidos
-                        </td>
-                        <td className="fw-semibold">{totalOrderReportVend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        <td colSpan={2}></td>
-                      </tr>
-                      <tr>
-                        <td colSpan={4} className="text-end fw-semibold">
-                          Total comissão
-                        </td>
-                        <td className="fw-semibold">{totalReportVend.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      </tr>
-                    </tfoot>
-                    </table>
-                  </div>
-                )}
-
-                {reportTel.length > 0 && (
-                  <div className="table-responsive mb-2">
-          <h5 className="mb-2">Televendas</h5>
-                    <table className="table table-sm table-striped table-hover">
-                      <thead>
-                        <tr>
-                          <th>Televendas</th>
-                          <th>ID Externo</th>
-                          <th>Total do pedido</th>
-                          <th>Registros</th>
-                          <th>Total Comissão</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {reportTel.map((r) => (
-                          <tr key={r.externo}>
-                            <td className="align-top" style={{ minWidth: 220 }}>
-                              <div className="fw-bold">{r.nome || '-'}</div>
-                              {(r.por_cliente ?? []).map((c) => (
-                                <div
-                                  key={`${c.cnpj}-${c.cliente}`}
-                                  className="ps-3 ms-2 mt-2 small border-start border-secondary border-opacity-25"
-                                >
-                                  <div>{c.cliente}</div>
-                                  {c.cnpj ? <div className="text-muted">{c.cnpj}</div> : null}
-                                  <div className="text-muted">
-                                    Comissão:{' '}
-                                    {c.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · Pedido:{' '}
-                                    {c.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} ·{' '}
-                                    {(c.num_registros ?? 0)} reg.
-                                  </div>
-                                </div>
-                              ))}
-                            </td>
-                            <td className="align-top text-muted small">{r.externo}</td>
-                            <td>{r.order_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                            <td>{(r as any).num_registros ?? (r as any).num_pedidos ?? 0}</td>
-                            <td>{r.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <td colSpan={2} className="text-end fw-semibold">
-                            Total dos pedidos
-                          </td>
-                          <td className="fw-semibold">{totalOrderReportTel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                          <td colSpan={2}></td>
-                        </tr>
-                        <tr>
-                          <td colSpan={4} className="text-end fw-semibold">
-                            Total comissão
-                          </td>
-                          <td className="fw-semibold">{totalReportTel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                {renderCommissionSection('Vendedor do pedido e do cliente (5%)', reportCaseA, totalOrderCaseA, totalCaseA)}
+                {renderCommissionSection('Vendedor do pedido, outro cliente (Televendas - 1%)', reportCaseB, totalOrderCaseB, totalCaseB)}
+                {renderCommissionSection('Vendedor do cliente (4%)', reportCaseC, totalOrderCaseC, totalCaseC)}
+                {renderSummarySection('Somatório total por vendedor', summaryRows, totalOrderCaseSummary, totalCaseSummary)}
+                {!reportCaseA.length && !reportCaseB.length && !reportCaseC.length && (
+                  <div className="text-center text-muted">Nenhum registro retornado para o ciclo selecionado.</div>
                 )}
               </div>
               <div className="modal-footer">

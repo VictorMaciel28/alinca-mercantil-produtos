@@ -126,9 +126,12 @@ export async function GET(req: Request) {
       // If we couldn't resolve an external vendor id, return empty result (no access)
       if (!id_vendedor_externo) return NextResponse.json({ ok: true, data: [] })
 
-      const where = {
+      const where: any = {
         ...whereBase,
-        id_vendedor_externo,
+        OR: [
+          { id_vendedor_externo },
+          { client_vendor_externo: id_vendedor_externo },
+        ],
       }
       total = await prisma.platform_order.count({ where })
       const agg = await prisma.platform_order.aggregate({
@@ -144,30 +147,54 @@ export async function GET(req: Request) {
       })
     }
 
-    const data = rows.map((r) => ({
-      numero: r.numero,
-      data: r.data.toISOString().slice(0, 10),
-      cliente: r.cliente,
-      cnpj: r.cnpj,
-      total: Number(r.total),
-      status:
-      r.status === 'PROPOSTA'
-        ? 'Proposta'
-        : r.status === 'APROVADO'
-        ? 'Aprovado'
-        : r.status === 'PENDENTE'
-        ? 'Pendente'
-        : r.status === 'CANCELADO'
-        ? 'Cancelado'
-        : r.status === 'FATURADO'
-        ? 'Faturado'
-        : r.status === 'ENVIADO'
-        ? 'Enviado'
-        : r.status === 'DADOS_INCOMPLETOS'
-        ? 'Dados incompletos'
-        : 'Entregue',
-      id_vendedor_externo: r.id_vendedor_externo,
-    }))
+    const vendorIds = new Set<string>()
+    rows.forEach((r) => {
+      if (r.id_vendedor_externo) vendorIds.add(r.id_vendedor_externo)
+      if (r.client_vendor_externo) vendorIds.add(r.client_vendor_externo)
+    })
+    const vendorNameMap = new Map<string, string>()
+    if (vendorIds.size > 0) {
+      const vendorRecords = await prisma.vendedor.findMany({
+        where: { id_vendedor_externo: { in: Array.from(vendorIds) } },
+        select: { id_vendedor_externo: true, nome: true },
+      })
+      vendorRecords.forEach((v) => {
+        if (v.id_vendedor_externo) vendorNameMap.set(v.id_vendedor_externo, v.nome || '')
+      })
+    }
+
+    const data = rows.map((r) => {
+      const orderVendor = r.id_vendedor_externo ?? null
+      const clientVendor = r.client_vendor_externo ?? null
+      return {
+        numero: r.numero,
+        data: r.data.toISOString().slice(0, 10),
+        cliente: r.cliente,
+        cnpj: r.cnpj,
+        total: Number(r.total),
+        status:
+          r.status === 'PROPOSTA'
+            ? 'Proposta'
+            : r.status === 'APROVADO'
+            ? 'Aprovado'
+            : r.status === 'PENDENTE'
+            ? 'Pendente'
+            : r.status === 'CANCELADO'
+            ? 'Cancelado'
+            : r.status === 'FATURADO'
+            ? 'Faturado'
+            : r.status === 'ENVIADO'
+            ? 'Enviado'
+            : r.status === 'DADOS_INCOMPLETOS'
+            ? 'Dados incompletos'
+            : 'Entregue',
+        id_vendedor_externo: orderVendor,
+        order_vendor_externo: orderVendor,
+        order_vendor_nome: orderVendor ? vendorNameMap.get(orderVendor) || null : null,
+        client_vendor_externo: clientVendor,
+        client_vendor_nome: clientVendor ? vendorNameMap.get(clientVendor) || null : null,
+      }
+    })
 
     return NextResponse.json({
       ok: true,

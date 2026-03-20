@@ -179,6 +179,7 @@ export default function PedidoFormPage() {
     id_vendedor_externo?: string | null
     nome?: string | null
   } | null>(null)
+  const [isAdminUser, setIsAdminUser] = useState(false)
 
   useEffect(() => {
     if (!isNew) return
@@ -188,6 +189,16 @@ export default function PedidoFormPage() {
         const j = await res.json()
         if (j?.ok) setMeVendedor(j.data)
       } catch {}
+    })()
+
+    ;(async () => {
+      try {
+        const res = await fetch('/api/me/vendedor')
+        const json = await res.json()
+        setIsAdminUser(Boolean(json?.ok && json?.data?.is_admin))
+      } catch {
+        setIsAdminUser(false)
+      }
     })()
   }, [isNew])
 
@@ -1523,12 +1534,14 @@ export default function PedidoFormPage() {
               <Button variant="secondary" onClick={() => router.push(entityParam === 'proposta' ? '/propostas' : '/pedidos')}>
                 Cancelar
               </Button>
-              <Button
-                type="submit"
-                disabled={!!pagamentoParceladoErro || isSubmitting}
-              >
-                {entityParam === 'proposta' ? 'Enviar Proposta' : 'Enviar Pedido'}
-              </Button>
+              {(isAdminUser || isNew) && (
+                <Button
+                  type="submit"
+                  disabled={!!pagamentoParceladoErro || isSubmitting}
+                >
+                  {entityParam === 'proposta' ? 'Enviar Proposta' : 'Enviar Pedido'}
+                </Button>
+              )}
             </div>
           </Form>
           </Card.Body>

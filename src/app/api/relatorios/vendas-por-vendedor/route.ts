@@ -59,10 +59,12 @@ export async function GET(req: Request) {
       order_total: number
     }
 
-    const vendedorMap = new Map<string, Grouped>()
-    const televendasMap = new Map<string, Grouped>()
-    const vendedorByClient = new Map<string, Map<string, ClientBreakdown>>()
-    const televendasByClient = new Map<string, Map<string, ClientBreakdown>>()
+    const caseAMap = new Map<string, Grouped>()
+    const caseBMap = new Map<string, Grouped>()
+    const caseCMap = new Map<string, Grouped>()
+    const caseAClientMap = new Map<string, Map<string, ClientBreakdown>>()
+    const caseBClientMap = new Map<string, Map<string, ClientBreakdown>>()
+    const caseCClientMap = new Map<string, Map<string, ClientBreakdown>>()
 
     const clientKey = (cliente: string, cnpj: string) => `${cnpj.trim()}|${cliente.trim()}`
 
@@ -122,8 +124,8 @@ export async function GET(req: Request) {
 
       if (orderVendor && clientVendor && orderVendor === clientVendor) {
         addGroup(
-          vendedorMap,
-          vendedorByClient,
+          caseAMap,
+          caseAClientMap,
           orderVendor,
           Number(((total * 5) / 100).toFixed(2)),
           total,
@@ -135,8 +137,8 @@ export async function GET(req: Request) {
 
       if (orderVendor) {
         addGroup(
-          televendasMap,
-          televendasByClient,
+          caseBMap,
+          caseBClientMap,
           orderVendor,
           Number(((total * 1) / 100).toFixed(2)),
           total,
@@ -145,10 +147,10 @@ export async function GET(req: Request) {
         )
       }
 
-      if (clientVendor) {
+      if (clientVendor && clientVendor !== orderVendor) {
         addGroup(
-          vendedorMap,
-          vendedorByClient,
+          caseCMap,
+          caseCClientMap,
           clientVendor,
           Number(((total * 4) / 100).toFixed(2)),
           total,
@@ -160,10 +162,10 @@ export async function GET(req: Request) {
 
     type GroupedWithClients = Grouped & { por_cliente: ClientBreakdown[] }
 
-    function finalizeGroups(
+    const finalizeGroups = (
       map: Map<string, Grouped>,
       byClient: Map<string, Map<string, ClientBreakdown>>,
-    ): GroupedWithClients[] {
+    ): GroupedWithClients[] => {
       return Array.from(map.values())
         .map((g) => {
           const clients = Array.from((byClient.get(g.externo) || new Map()).values()).sort((a, b) => b.total - a.total)
@@ -172,25 +174,18 @@ export async function GET(req: Request) {
         .sort((a, b) => b.total - a.total)
     }
 
-    async function groupByRole(role: 'VENDEDOR' | 'TELEVENDAS'): Promise<GroupedWithClients[]> {
-      const map = role === 'VENDEDOR' ? vendedorMap : televendasMap
-      const byClient = role === 'VENDEDOR' ? vendedorByClient : televendasByClient
-      return finalizeGroups(map, byClient)
-    }
+    const caseA = finalizeGroups(caseAMap, caseAClientMap)
+    const caseB = finalizeGroups(caseBMap, caseBClientMap)
+    const caseC = finalizeGroups(caseCMap, caseCClientMap)
 
     if (roleParam === 'VENDEDOR') {
-      const data = await groupByRole('VENDEDOR')
-      return NextResponse.json({ ok: true, data })
+      return NextResponse.json({ ok: true, caseA, caseC })
     }
     if (roleParam === 'TELEVENDAS') {
-      const data = await groupByRole('TELEVENDAS')
-      return NextResponse.json({ ok: true, data })
+      return NextResponse.json({ ok: true, caseB })
     }
 
-    // No role: return both sections
-    const [vendedores, televendas] = await Promise.all([groupByRole('VENDEDOR'), groupByRole('TELEVENDAS')])
-
-    return NextResponse.json({ ok: true, vendedores, televendas })
+    return NextResponse.json({ ok: true, caseA, caseB, caseC })
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error?.message ?? 'Erro ao gerar relatório' }, { status: 500 })
   }
