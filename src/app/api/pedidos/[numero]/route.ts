@@ -83,6 +83,7 @@ export async function GET(_: Request, { params }: { params: { numero: string } }
             bairro: row.cliente_rel.bairro ?? null,
             cep: row.cliente_rel.cep ?? null,
             uf: row.cliente_rel.uf ?? null,
+            email: row.cliente_rel.email ?? null,
           }
         : null,
       itens: (row.products || []).map((p: any) => ({

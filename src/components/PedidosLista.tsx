@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Form, Table, Badge, Row, Col, Button, Modal, Spinner } from "react-bootstrap";
  import PageTitle from '@/components/PageTitle'
-import { Pedido } from '@/services/pedidos2'
+import { Pedido, PedidoStatus } from '@/services/pedidos2'
 import IconifyIcon from '@/components/wrappers/IconifyIcon'
 import { savePedido as savePedidoRemote } from '@/services/pedidos2'
  import { useRouter } from 'next/navigation'
@@ -17,6 +17,14 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
    itemRouteBase?: string
  }
  
+type ShareTarget = {
+  numero: number
+  cliente: string
+  total: number
+  status: PedidoStatus
+  email: string | null
+}
+
  export default function PedidosLista({
    entity = 'pedido',
    title,
@@ -27,6 +35,13 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
  }: PedidosListaProps) {
    const router = useRouter()
    const [items, setItems] = useState<Pedido[]>([])
+  const [shareModalVisible, setShareModalVisible] = useState(false)
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null)
+  const [shareEmailInput, setShareEmailInput] = useState('')
+  const [shareLoadingPedidoNumero, setShareLoadingPedidoNumero] = useState<number | null>(null)
+  const [shareSending, setShareSending] = useState(false)
+  const [shareModalError, setShareModalError] = useState<string | null>(null)
+  const [shareNotice, setShareNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [isSyncingPedidos, setIsSyncingPedidos] = useState(false)
 
   const loadItems = async () => {
@@ -267,6 +282,77 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
     return `${itemRouteBase}/${numero}`
   }
 
+  const closeShareModal = () => {
+    setShareModalVisible(false)
+    setShareTarget(null)
+    setShareEmailInput('')
+    setShareModalError(null)
+  }
+
+  const openShareModal = async (e: React.MouseEvent, pedidoNumero: number) => {
+    e.stopPropagation()
+    setShareModalError(null)
+    setShareNotice(null)
+    setShareLoadingPedidoNumero(pedidoNumero)
+    try {
+      const res = await fetch(`/api/pedidos/${pedidoNumero}`)
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || 'Falha ao carregar o pedido')
+      }
+      const data = json.data
+      const defaultEmail = data?.selected_client?.email || ''
+      setShareTarget({
+        numero: data.numero,
+        cliente: data.cliente,
+        total: Number(data.total || 0),
+        status: data.status,
+        email: defaultEmail || null,
+      })
+      setShareEmailInput(defaultEmail || '')
+      setShareModalVisible(true)
+    } catch (err: any) {
+      setShareNotice({
+        type: 'error',
+        message: err?.message || 'Não foi possível abrir o compartilhamento',
+      })
+    } finally {
+      setShareLoadingPedidoNumero(null)
+    }
+  }
+
+  const handleShareSend = async () => {
+    if (!shareTarget) return
+    const recipient = shareEmailInput.trim()
+    if (!recipient) {
+      setShareModalError('Email obrigatório')
+      return
+    }
+    setShareModalError(null)
+    setShareSending(true)
+    const targetNumero = shareTarget.numero
+    try {
+      const res = await fetch('/api/pedidos/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numero: shareTarget.numero, email: recipient }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || 'Falha ao enviar o email')
+      }
+      closeShareModal()
+      setShareNotice({
+        type: 'success',
+        message: `Pedido #${targetNumero} enviado para ${recipient}`,
+      })
+    } catch (err: any) {
+      setShareModalError(err?.message || 'Falha ao enviar o email')
+    } finally {
+      setShareSending(false)
+    }
+  }
+
   const handleDelete = async (e: React.MouseEvent, numero: number) => {
     e.stopPropagation()
     if (!confirm('Confirma exclusão?')) return
@@ -421,6 +507,11 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
           </div>
         }
       />
+      {shareNotice && (
+        <div className={`alert alert-${shareNotice.type === 'success' ? 'success' : 'danger'} mt-3`}>
+          {shareNotice.message}
+        </div>
+      )}
 
       <section className="filtros pt-1 pb-2">
          <Card className="border-0 shadow-sm">
@@ -610,7 +701,7 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                            <IconifyIcon icon="ri:edit-line" />
                          </Button>
                       )}
-                      {!isAdmin && entity === 'pedido' && (
+                     {!isAdmin && entity === 'pedido' && (
                         <Button
                           variant="outline-primary"
                           size="sm"
@@ -620,6 +711,19 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
                           <IconifyIcon icon="ri:eye-line" />
                         </Button>
                       )}
+                      <Button
+                        variant="outline-info"
+                        size="sm"
+                        disabled={shareLoadingPedidoNumero === p.numero}
+                        onClick={(e) => openShareModal(e, p.numero)}
+                        title="Compartilhar"
+                      >
+                        {shareLoadingPedidoNumero === p.numero ? (
+                          <Spinner animation="border" size="sm" />
+                        ) : (
+                          <IconifyIcon icon="ri:share-forward-line" />
+                        )}
+                      </Button>
                            {entity === 'proposta' && (
                              <Button
                                variant="outline-success"
@@ -667,6 +771,57 @@ import { savePedido as savePedidoRemote } from '@/services/pedidos2'
            </Card.Body>
          </Card>
        </section>
+
+      <Modal show={shareModalVisible} onHide={closeShareModal} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Compartilhar pedido</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {shareTarget && (
+            <>
+              <p className="mb-1">
+                Enviar pedido <strong>#{shareTarget.numero}</strong> — {shareTarget.cliente}
+              </p>
+              <div className="small text-muted mb-3">
+                Total:{' '}
+                <strong>
+                  {shareTarget.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </strong>
+              </div>
+              <Form.Group className="mb-3">
+                <Form.Label>Email do destinatário</Form.Label>
+                <Form.Control
+                  type="email"
+                  value={shareEmailInput}
+                  onChange={(e) => setShareEmailInput(e.target.value)}
+                  placeholder="cliente@empresa.com"
+                />
+              </Form.Group>
+              {shareModalError && <div className="alert alert-danger">{shareModalError}</div>}
+              <div className="small text-muted">Será enviado um PDF com os detalhes do pedido.</div>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={closeShareModal} disabled={shareSending}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleShareSend}
+            disabled={shareSending || !shareEmailInput.trim()}
+          >
+            {shareSending ? (
+              <>
+                <Spinner animation="border" size="sm" className="me-2" />
+                Enviando...
+              </>
+            ) : (
+              'Enviar por email'
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <Modal show={showEvolveModal} onHide={() => setShowEvolveModal(false)} centered>
         <Modal.Header closeButton>

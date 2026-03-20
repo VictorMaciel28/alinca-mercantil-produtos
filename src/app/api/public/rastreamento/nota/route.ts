@@ -1,9 +1,5 @@
-import fs from 'fs'
-import path from 'path'
 import { NextResponse } from 'next/server'
 import { tinyV3Fetch } from '@/lib/tinyOAuth'
-import { Xslt, XmlParser } from 'xslt-processor'
-import puppeteer from 'puppeteer'
 
 function extractXmlString(payload: any): string | null {
   if (!payload) return null
@@ -26,65 +22,27 @@ function extractXmlString(payload: any): string | null {
   }
 }
 
-const RASTREAMENTO_DIR = path.join(process.cwd(), 'src/app/api/public/rastreamento')
-const SCHEMA_DIR = path.join(RASTREAMENTO_DIR, 'danfe-schema')
-const NFE_XSL_PATH = path.join(SCHEMA_DIR, 'NFe.xsl')
-const DANFE_XSL = fs.readFileSync(NFE_XSL_PATH, 'utf8')
-const parser = new XmlParser()
-const xslt = new Xslt({
-  outputMethod: 'html',
-  fetchFunction: async (uri: string) => {
-    const normalized = uri.replace(/^[\\/]+/, '')
-    const localSchema = path.join(SCHEMA_DIR, normalized)
-    if (fs.existsSync(localSchema)) {
-      return fs.readFileSync(localSchema, 'utf8')
-    }
-    const localRoot = path.join(RASTREAMENTO_DIR, normalized)
-    if (fs.existsSync(localRoot)) {
-      return fs.readFileSync(localRoot, 'utf8')
-    }
-    if (/^https?:\/\//i.test(uri)) {
-      const res = await fetch(uri, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-        },
-      })
-      if (!res.ok) throw new Error(`xslt fetch ${uri}: ${res.status}`)
-      return res.text()
-    }
-    const remoteUrl = new URL(uri, 'https://dfe-portal.svrs.rs.gov.br/Schemas/PRNFE/XSLT/NFe/').toString()
-    const res = await fetch(remoteUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-      },
-    })
-    if (!res.ok) throw new Error(`xslt fetch ${remoteUrl}: ${res.status}`)
-    return res.text()
-  },
-})
-const PRECOMPILED_XSLT = parser.xmlParse(DANFE_XSL)
+const DANFE_API_URL = 'https://api.meudanfe.com.br/v2/fd/convert/xml-to-da'
+const DANFE_API_KEY = process.env.DANFE_API_KEY || 'a23c472e-6b4e-40d6-a8bc-4099eb0ff1ef'
 
-async function buildDanfeHtml(xml: string) {
-  try {
-    return await xslt.xsltProcess(parser.xmlParse(xml), PRECOMPILED_XSLT)
-  } catch (error) {
-    console.error('[buildDanfeHtml] xslt error', error)
-    throw error
+async function fetchDanfePdf(xml: string) {
+  const res = await fetch(DANFE_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain',
+      'Api-Key': DANFE_API_KEY,
+    },
+    body: xml,
+  })
+
+  const json = await res.json().catch(() => null)
+  const data = json?.data
+  if (!res.ok || !data || typeof data !== 'string') {
+    const message = json?.message || json?.error || `danfe_api_error_${res.status}`
+    throw new Error(message)
   }
-}
 
-async function renderHtmlToPdf(html: string) {
-  const browser = await puppeteer.launch({
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  })
-  const page = await browser.newPage()
-  await page.setContent(html, { waitUntil: 'networkidle0' })
-  const pdf = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-  })
-  await browser.close()
-  return pdf
+  return Buffer.from(data, 'base64')
 }
 
 async function fetchTinyXml(idNota: string) {
@@ -118,8 +76,7 @@ export async function GET(req: Request) {
     const { xml } = await fetchTinyXml(idNota)
 
     if (type === 'pdf') {
-      const html = await buildDanfeHtml(xml)
-      const pdf = await renderHtmlToPdf(html)
+      const pdf = await fetchDanfePdf(xml)
       return new NextResponse(pdf, {
         headers: {
           'Content-Type': 'application/pdf',
