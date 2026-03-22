@@ -175,6 +175,7 @@ model platform_order {
   cliente_rel          cliente?      @relation(fields: [id_client_externo], references: [external_id], onDelete: SetNull)
   commissions          platform_commission[]
   products             platform_order_product[]
+  envios               platform_order_envio[]
 }
 
 model platform_order_status_history {
@@ -185,6 +186,30 @@ model platform_order_status_history {
 
   @@index([tiny_id], map: "idx_platform_order_status_history_tiny_id")
   @@index([changed_at], map: "idx_platform_order_status_history_changed_at")
+}
+
+model platform_order_envio {
+  id          Int            @id @default(autoincrement())
+  order_num   Int
+  motorista_id Int
+  created_at  DateTime       @default(now()) @db.DateTime(0)
+
+  order       platform_order @relation(fields: [order_num], references: [numero], onDelete: Cascade)
+  motorista   motorista      @relation(fields: [motorista_id], references: [id], onDelete: Cascade)
+
+  @@unique([order_num], map: "uk_platform_order_envio_order")
+  @@index([order_num], map: "idx_platform_order_envio_order")
+  @@index([motorista_id], map: "idx_platform_order_envio_motorista")
+}
+
+model motorista {
+  id              Int       @id @default(autoincrement())
+  nome            String    @db.VarChar(150)
+  email           String?   @db.VarChar(150)
+  senha_encrypted String?   @db.VarChar(512)
+  envios          platform_order_envio[]
+
+  @@index([email], map: "idx_motorista_email")
 }
 
 enum CommissionRole {
